@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Three.js 입문</title>
+  <style>
+    body { margin: 0; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.141.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.141.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    // --- 모듈 임포트 ---
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    // --- 전역 변수 ---
+    let model_car;
+    const clock = new THREE.Clock();
+
+    // 키보드 상태
+    const keys = {
+      ArrowUp: false,
+      ArrowDown: false,
+      ArrowLeft: false,
+      ArrowRight: false,
+    };
+    
+    // 마우스 휠 줌 설정
+    const minZoomDistance = 2.0;
+    const maxZoomDistance = 15.0;
+    const zoomSpeed = 0.005;
+    
+    // --- 방 좌표 및 자동 이동 변수 ---
+
+    const car_y = 0.2;
+    const roomData = {
+      living_room: new THREE.Vector3(0.0, car_y, -0.3),
+      inner_room: new THREE.Vector3(0.25, car_y, 1.2),
+      kitchen: new THREE.Vector3(-0.9, car_y, 0.0)
+    };
+
+    // 중간 경로점 (Waypoint) 정의
+    const INNER_ROOM_DOORWAY = new THREE.Vector3(
+      0.2,
+      car_y,
+      0.4
+    );
+    const KITCHEN_DOORWAY = new THREE.Vector3(
+      -0.75,
+      car_y,
+      -0.15
+    );
+
+    // 이동 경로(Path) 데이터
+    const pathData = {
+      living_room_to_inner_room: [ INNER_ROOM_DOORWAY, roomData.inner_room ],
+      inner_room_to_living_room: [ INNER_ROOM_DOORWAY, roomData.living_room ],
+      living_room_to_kitchen: [ KITCHEN_DOORWAY, roomData.kitchen ],
+      kitchen_to_living_room: [ KITCHEN_DOORWAY, roomData.living_room ],
+      inner_room_to_kitchen: [ INNER_ROOM_DOORWAY, roomData.living_room, KITCHEN_DOORWAY, roomData.kitchen ],
+      kitchen_to_inner_room: [ KITCHEN_DOORWAY, roomData.living_room, INNER_ROOM_DOORWAY, roomData.inner_room ]
+    };
+
+    // 자동 이동 상태 변수
+    let currentRoom = "living_room"; // 자동차의 현재 방 (시작 위치)
+    let movementQueue = []; // 따라갈 경로점 배열
+    let currentTarget = null; // 현재 이동 중인 목표 경로점
+    
+    // --- 3. Scene 생성 ---
+    let scene = new THREE.Scene();
+    scene.background = new THREE.Color("skyblue");
+
+    // --- 4. Camera 생성 ---
+    let camera = new THREE.PerspectiveCamera(
+      45, // fov
+      window.innerWidth / window.innerHeight, // aspect
+      0.1, // near
+      1000 // far
+    );
+    camera.position.set(0, 5, 2); // Y축을 높여 위에서 보도록 설정
+
+    // --- 5. Light 추가 ---
+    let PLight = new THREE.PointLight(0xffffff, 1.0);
+    let ALight = new THREE.AmbientLight(0xffffff, 0.5);
+    PLight.position.set(10, 10, 10);
+    scene.add(PLight, ALight);
+
+    // --- 6. Renderer 생성 ---
+    let renderer = new THREE.WebGLRenderer({
+      canvas: document.querySelector("#canvas"),
+      antialias: true,
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+
+    // --- 7. 3D 모델 불러오기 ---
+    let loader = new GLTFLoader();
+    
+    const modelPath_House = "models/house_ex4.glb";
+    const modelPath_Car = "models/car_pika.glb"; // (경로 뒤 공백 제거됨)
+
+    loader.load(modelPath_House, function (gltf) {
+      const model = gltf.scene;
+      model.scale.set(2, 2, 2);
+      scene.add(model);
+    });
+    
+    loader.load(modelPath_Car, function (gltf) {
+      model_car = gltf.scene;
+      model_car.scale.set(0.1, 0.1, 0.1);
+      model_car.position.set(0.0,car_y,-0.3);
+      scene.add(model_car);
+    });
+
+    // --- 8. 자동 이동 함수 ---
+    /**
+     * 지정된 방으로 자동 이동을 시작합니다.
+     */
+    function moveToRoom(toRoomName) {
+      if (toRoomName === currentRoom || currentTarget) {
+        return; // 이미 이동 중이거나 같은 방이면 무시
+      }
+      
+      const pathKey = `${currentRoom}_to_${toRoomName}`;
+      const path = pathData[pathKey];
+
+      if (!path) {
+        console.error(`Error: '${pathKey}' 경로를 찾을 수 없습니다.`);
+        return;
+      }
+      
+      console.log(`자동 이동: ${pathKey}`);
+      movementQueue = [...path]; // 경로 복사
+
+      if (movementQueue.length > 0) {
+        // 수동 조작 후 위치 보정을 위해 시작점(현재 방)으로 차를 스냅
+        model_car.position.copy(roomData[currentRoom]);
+        currentTarget = movementQueue.shift(); // 첫 번째 경로점 설정
+      }
+      
+      currentRoom = toRoomName; // 현재 방 상태 갱신
+    }
+    // 콘솔 테스트를 위해 전역(window)에 노출
+    window.moveToRoom = moveToRoom;
+
+
+    // --- 9. 애니메이션 루프 ---
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+
+      // 마우스 휠 줌을 위해 카메라는 항상 원점을 바라봄
+      camera.lookAt(0, 0, 0);
+
+      if (model_car) {
+        // A. 자동 이동 모드 (currentTarget이 설정된 경우)
+        if (currentTarget) {
+          model_car.position.lerp(currentTarget, 0.05); // 목표로 5%씩 이동
+          model_car.lookAt(currentTarget); // 목표 지점 바라보기
+
+          // 목표에 0.01 이내로 근접하면
+          if (model_car.position.distanceTo(currentTarget) < 0.01) {
+            model_car.position.copy(currentTarget); // 정확한 위치로 스냅
+
+            if (movementQueue.length > 0) {
+              currentTarget = movementQueue.shift(); // 다음 경로점 설정
+            } else {
+              currentTarget = null; // 이동 완료 (수동 모드 전환)
+            }
+          }
+        } 
+        // B. 수동 조작 모드 (currentTarget이 null인 경우)
+        else {
+          const moveSpeed = 0.1 * delta;
+          const rotateSpeed = 5 * delta;
+
+          if (keys.ArrowUp) {
+            model_car.translateZ((moveSpeed / model_car.scale.x));
+          }
+          if (keys.ArrowDown) {
+            model_car.translateZ(-(moveSpeed / model_car.scale.x));
+          }
+          if (keys.ArrowLeft) {
+            model_car.rotation.y += rotateSpeed;
+          }
+          if (keys.ArrowRight) {
+            model_car.rotation.y -= rotateSpeed;
+          }
+        }
+      }
+
+      renderer.render(scene, camera); // 씬 렌더링
+    }
+    // 애니메이션 루프 1회만 호출
+    animate();
+
+
+    // --- 10. 이벤트 리스너 ---
+
+    // 브라우저 창 크기 변경
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // 키보드 누름
+    window.addEventListener('keydown', (e) => {
+      if (e.key in keys) {
+        keys[e.key] = true;
+      }
+    });
+
+    // 키보드 뗌
+    window.addEventListener('keyup', (e) => {
+      if (e.key in keys) {
+        keys[e.key] = false;
+      }
+    });
+
+    // 마우스 휠 줌
+    window.addEventListener('wheel', (e) => {
+      const direction = camera.position.clone().normalize();
+      let distance = camera.position.length();
+      
+      distance += e.deltaY * zoomSpeed; // 스크롤 방향에 따라 거리 조절
+      distance = Math.max(minZoomDistance, Math.min(maxZoomDistance, distance)); // 거리 제한
+      
+      camera.position.copy(direction).multiplyScalar(distance); // 새 위치 적용
+    });
+    
+    // 1초마다 자동차 좌표 콘솔에 출력
+    setInterval(() => {
+      if (model_car) {
+        const x = model_car.position.x.toFixed(2);
+        const y = model_car.position.y.toFixed(2);
+        const z = model_car.position.z.toFixed(2);
+        console.log(`🚗 Car Position: (x: ${x}, y: ${y}, z: ${z})`);
+      }
+    }, 1000); // 1초
+
+  </script>
+</body>
+</html>

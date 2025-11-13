@@ -152,8 +152,44 @@
       
       currentRoom = toRoomName; // 현재 방 상태 갱신
     }
+    // --- [새 기능] 콘솔 명령어 파서 함수 ---
+    /**
+     * (F12 콘솔 테스트용)
+     * 외부 기기에서 받은 것과 유사한 텍스트 명령을 파싱합니다.
+     * @param {string} message - 예: "<maum_1>(direction=1)<maum_end>"
+     */
+    function parseCommand(message) {
+      console.log(`수신된 원본 메시지: ${message}`);
+
+      // 간단한 문자열 일치로 명령을 파싱합니다.
+      // (나중에는 이 부분을 정규식 등으로 더 정교하게 만들 수 있습니다.)
+      switch (message) {
+        case "<maum_1>(direction=1)<maum_end>":
+          console.log("명령 파싱: 'living_room'으로 이동");
+          moveToRoom("living_room");
+          break;
+
+        // --- (제가 임의로 추가한 다른 방 예시) ---
+        case "<maum_1>(direction=2)<maum_end>":
+          console.log("명령 파싱: 'inner_room'으로 이동");
+          moveToRoom("inner_room");
+          break;
+
+        case "<maum_1>(direction=3)<maum_end>":
+          console.log("명령 파싱: 'kitchen'으로 이동");
+          moveToRoom("kitchen");
+          break;
+
+        default:
+          console.error(`알 수 없는 명령입니다: ${message}`);
+          break;
+      }
+    }
+
+    // 콘솔에서 'parseCommand' 함수를 호출할 수 있도록 전역에 노출
+    window.parseCommand = parseCommand;
     // 콘솔 테스트를 위해 전역(window)에 노출
-    window.moveToRoom = moveToRoom;
+    //window.moveToRoom = moveToRoom;
 
 
     // --- 9. 애니메이션 루프 ---

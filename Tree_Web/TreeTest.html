@@ -158,31 +158,49 @@
      * 외부 기기에서 받은 것과 유사한 텍스트 명령을 파싱합니다.
      * @param {string} message - 예: "<maum_1>(direction=1)<maum_end>"
      */
+    // --- [수정] 정규식을 지원하도록 if/else if로 변경된 파서 함수 ---
+    /**
+     * 외부 기기에서 받은 텍스트 명령을 파싱합니다.
+     * @param {string} message - 예: "<maum_1>..." 또는 "<maum_2>..."
+     */
     function parseCommand(message) {
       console.log(`수신된 원본 메시지: ${message}`);
 
-      // 간단한 문자열 일치로 명령을 파싱합니다.
-      // (나중에는 이 부분을 정규식 등으로 더 정교하게 만들 수 있습니다.)
-      switch (message) {
-        case "<maum_1>(direction=1)<maum_end>":
-          console.log("명령 파싱: 'living_room'으로 이동");
-          moveToRoom("living_room");
-          break;
+      // --- [새 기능] <maum_2> 알람 명령을 처리할 정규식 ---
+      // 패턴: <maum_2>(mode=2, time="(.+)")<maum_end>
+      // (.+) : 괄호 안의 ".+"가 "따옴표 안의 모든 문자열"을 캡처합니다.
+      const alarmRegex = /<maum_2>\(mode=2, time="(.+)"\)<maum_end>/;
+      const alarmMatch = message.match(alarmRegex); // 메시지와 정규식 패턴 비교
 
-        // --- (제가 임의로 추가한 다른 방 예시) ---
-        case "<maum_1>(direction=2)<maum_end>":
-          console.log("명령 파싱: 'inner_room'으로 이동");
-          moveToRoom("inner_room");
-          break;
+      // 1. [새 기능] <maum_2> 알람 명령이 매치되었는지 확인
+      if (alarmMatch) {
+        // alarmMatch[0]은 매치된 전체 문자열입니다.
+        // alarmMatch[1]은 첫 번째 캡처 그룹 '(.+)'에 해당하는 값입니다. (예: "세시")
+        const timeString = alarmMatch[1]; 
+        
+        console.log(`명령 파싱: 알람 설정, 추출된 시간 = ${timeString}`);
+        
+        // (나중에 이 부분에서 실제 알람 설정 함수를 호출할 수 있습니다)
+        // setAlarm(timeString); 
+      }
 
-        case "<maum_1>(direction=3)<maum_end>":
-          console.log("명령 파싱: 'kitchen'으로 이동");
-          moveToRoom("kitchen");
-          break;
+      // 2. [기존 기능] <maum_1> 이동 명령 (else if로 변경)
+      else if (message === "<maum_1>(direction=1)<maum_end>") {
+        console.log("명령 파싱: 'living_room'으로 이동");
+        moveToRoom("living_room");
+      }
+      else if (message === "<maum_1>(direction=2)<maum_end>") {
+        console.log("명령 파싱: 'inner_room'으로 이동");
+        moveToRoom("inner_room");
+      }
+      else if (message === "<maum_1>(direction=3)<maum_end>") {
+        console.log("명령 파싱: 'kitchen'으로 이동");
+        moveToRoom("kitchen");
+      }
 
-        default:
-          console.error(`알 수 없는 명령입니다: ${message}`);
-          break;
+      // 3. 어떤 패턴과도 일치하지 않는 경우
+      else {
+        console.error(`알 수 없는 명령입니다: ${message}`);
       }
     }
 

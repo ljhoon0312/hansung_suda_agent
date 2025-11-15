@@ -21,7 +21,7 @@
   </script>
 
   <script type="module">
-    const ws = new WebSocket("ws://192.168.0.xx:3001"); // 맥 IP로 넣기
+    const ws = new WebSocket("ws://10.138.65.124:3001"); // 맥 IP로 넣기
     ws.onopen = () => {
       console.log("🔗 WebSocket Connected to server");
     };
@@ -168,6 +168,41 @@
       
       currentRoom = toRoomName; // 현재 방 상태 갱신
     }
+        // --- maum_0 방향 명령용 수동 이동 함수 ---
+    const commandMoveStep = 0.3;             // 한 번에 이동 거리
+    const commandRotateStep = Math.PI / 12;  // 한 번에 회전 각도
+
+    function moveRobotInDirection(direction) {
+      if (!model_car) {
+        console.error("model_car가 아직 로드되지 않았습니다.");
+        return;
+      }
+
+      // 수동 제어 들어오면 자동 경로는 끊어버림
+      currentTarget = null;
+      movementQueue = [];
+
+      switch (direction) {
+        case 1: // 앞으로
+          model_car.translateZ(commandMoveStep / model_car.scale.x);
+          console.log("앞으로 이동");
+          break;
+        case 2: // 뒤로
+          model_car.translateZ(-commandMoveStep / model_car.scale.x);
+          console.log("뒤로 이동");
+          break;
+        case 3: // 왼쪽 회전
+          model_car.rotation.y += commandRotateStep;
+          console.log("왼쪽 회전");
+          break;
+        case 4: // 오른쪽 회전
+          model_car.rotation.y -= commandRotateStep;
+          console.log("오른쪽 회전");
+          break;
+        default:
+          console.error("지원하지 않는 direction 값:", direction);
+      }
+    }
     // --- [새 기능] 콘솔 명령어 파서 함수 ---
     /**
      * (F12 콘솔 테스트용)
@@ -179,45 +214,80 @@
      * 외부 기기에서 받은 텍스트 명령을 파싱합니다.
      * @param {string} message - 예: "<maum_1>..." 또는 "<maum_2>..."
      */
+    /**
+     * 외부 기기/안드로이드에서 받은 텍스트 명령을 파싱합니다.
+     * @param {string} message - 예: "<maum_0>(direction=1)<maum_end>"
+     */
     function parseCommand(message) {
       console.log(`수신된 원본 메시지: ${message}`);
 
-      // --- [새 기능] <maum_2> 알람 명령을 처리할 정규식 ---
-      // 패턴: <maum_2>(mode=2, time="(.+)")<maum_end>
-      // (.+) : 괄호 안의 ".+"가 "따옴표 안의 모든 문자열"을 캡처합니다.
-      const alarmRegex = /<maum_2>\(mode=2, time="(.+)"\)<maum_end>/;
-      const alarmMatch = message.match(alarmRegex); // 메시지와 정규식 패턴 비교
+      // 1) 방향 이동: <maum_0>(direction=1..4)<maum_end>
+      let m = message.match(/^<maum_0>\(direction=(\d+)\)<maum_end>$/);
+      if (m) {
+        const dir = Number(m[1]);
+        moveRobotInDirection(dir);
+        return;
+      }
 
-      // 1. [새 기능] <maum_2> 알람 명령이 매치되었는지 확인
-      if (alarmMatch) {
-        // alarmMatch[0]은 매치된 전체 문자열입니다.
-        // alarmMatch[1]은 첫 번째 캡처 그룹 '(.+)'에 해당하는 값입니다. (예: "세시")
-        const timeString = alarmMatch[1]; 
-        
+      // 2) 목적지 이동: <maum_1>(direction=1..3)<maum_end>
+      m = message.match(/^<maum_1>\(direction=(\d+)\)<maum_end>$/);
+      if (m) {
+        const dir = Number(m[1]);
+        if (dir === 1) {
+          console.log("명령 파싱: 'living_room'으로 이동");
+          moveToRoom("living_room");
+        } else if (dir === 2) {
+          console.log("명령 파싱: 'inner_room'으로 이동");
+          moveToRoom("inner_room");
+        } else if (dir === 3) {
+          console.log("명령 파싱: 'kitchen'으로 이동");
+          moveToRoom("kitchen");
+        } else {
+          console.error("지원하지 않는 목적지 direction:", dir);
+        }
+        return;
+      }
+
+      // 3) 시간 알림: <maum_2>(mode=2, time="...")<maum_end>
+      m = message.match(/^<maum_2>\(mode=2,\s*time="(.+)"\)<maum_end>$/);
+      if (m) {
+        const timeString = m[1];
         console.log(`명령 파싱: 알람 설정, 추출된 시간 = ${timeString}`);
-        
-        // (나중에 이 부분에서 실제 알람 설정 함수를 호출할 수 있습니다)
-        // setAlarm(timeString); 
+        // setAlarm(timeString); // 필요하면 나중에 구현
+        return;
       }
 
-      // 2. [기존 기능] <maum_1> 이동 명령 (else if로 변경)
-      else if (message === "<maum_1>(direction=1)<maum_end>") {
-        console.log("명령 파싱: 'living_room'으로 이동");
-        moveToRoom("living_room");
-      }
-      else if (message === "<maum_1>(direction=2)<maum_end>") {
-        console.log("명령 파싱: 'inner_room'으로 이동");
-        moveToRoom("inner_room");
-      }
-      else if (message === "<maum_1>(direction=3)<maum_end>") {
-        console.log("명령 파싱: 'kitchen'으로 이동");
-        moveToRoom("kitchen");
+      // 4) 속도 조절: <maum_3>(mode=1|2)<maum_end>
+      m = message.match(/^<maum_3>\(mode=(\d+)\)<maum_end>$/);
+      if (m) {
+        const mode = Number(m[1]);
+        if (mode === 1) {
+          console.log("속도 업 (지금은 로그만)");
+          // 나중에 commandMoveStep / commandRotateStep 조절 코드를 여기 넣어도 됨
+        } else if (mode === 2) {
+          console.log("속도 다운 (지금은 로그만)");
+        } else {
+          console.error("지원하지 않는 속도 모드:", mode);
+        }
+        return;
       }
 
-      // 3. 어떤 패턴과도 일치하지 않는 경우
-      else {
-        console.error(`알 수 없는 명령입니다: ${message}`);
+      // 5) 핸드폰 찾기: <maum_4>(mode=1|2)<maum_end>
+      m = message.match(/^<maum_4>\(mode=(\d+)\)<maum_end>$/);
+      if (m) {
+        const mode = Number(m[1]);
+        if (mode === 1) {
+          console.log("핸드폰 찾기: 소리로 찾기 (지금은 로그만)");
+        } else if (mode === 2) {
+          console.log("핸드폰 찾기: 진동으로 찾기 (지금은 로그만)");
+        } else {
+          console.error("지원하지 않는 핸드폰 찾기 모드:", mode);
+        }
+        return;
       }
+
+      // 그 외
+      console.error(`알 수 없는 명령입니다: ${message}`);
     }
 
     // 콘솔에서 'parseCommand' 함수를 호출할 수 있도록 전역에 노출

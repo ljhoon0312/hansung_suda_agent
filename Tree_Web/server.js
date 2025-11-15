@@ -7,13 +7,14 @@ const WebSocket = require("ws");
 const app = express();
 app.use(bodyParser.json());
 
-// HTTP + WS 서버 생성
+// HTTP + WebSocket 서버 생성
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// 연결된 브라우저 목록
+// 연결된 Three.js 브라우저 목록
 let clients = new Set();
 
+// 브라우저(WebSocket) 연결 처리
 wss.on("connection", (ws) => {
   console.log("WebSocket Connected");
   clients.add(ws);
@@ -24,14 +25,25 @@ wss.on("connection", (ws) => {
   });
 });
 
-// Android → HTTP POST로 명령 보내는 엔드포인트
+// 안드로이드에서 명령 보내는 엔드포인트
+// body: { "command": "<maum_0>(direction=1)<maum_end>" }
 app.post("/command", (req, res) => {
   const { command } = req.body;
+
+  if (!command) {
+    console.error("command 필드가 비어 있음");
+    return res.status(400).json({ ok: false, error: "command is required" });
+  }
+
   console.log("받은 명령:", command);
 
-  // 연결된 WebSocket 클라이언트(브라우저)에게 전달
+  // 연결된 모든 브라우저로 전파
   for (const ws of clients) {
-    ws.send(JSON.stringify({ type: "command", command }));
+    try {
+      ws.send(JSON.stringify({ type: "command", command }));
+    } catch (e) {
+      console.error("WS 전송 중 에러:", e);
+    }
   }
 
   res.json({ ok: true });

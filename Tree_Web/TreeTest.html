@@ -21,6 +21,22 @@
   </script>
 
   <script type="module">
+    const ws = new WebSocket("ws://192.168.0.xx:3001"); // 맥 IP로 넣기
+    ws.onopen = () => {
+      console.log("🔗 WebSocket Connected to server");
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "command") {
+          console.log("서버에서 명령 수신:", data.command);
+          parseCommand(data.command);    // 콘솔 명령어 파서 함수 호출
+        }
+      } catch (e) {
+        console.error("메시지 파싱 오류", e);
+      }
+    };
     // --- 모듈 임포트 ---
     import * as THREE from 'three';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';

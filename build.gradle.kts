@@ -2,7 +2,7 @@
 buildscript {
     dependencies {
         classpath ("org.jetbrains.kotlin:kotlin-serialization:1.8.0")
-        classpath ("com.android.tools.build:gradle:8.2.0")
+        classpath ("com.android.tools.build:gradle:8.13.1")
     }
 }
 

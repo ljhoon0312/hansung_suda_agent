@@ -53,6 +53,49 @@ class ConversationService(
             .build()
     }
 
+    // RC 카 명령을 보낼 Node.js 서버 주소 (맥 IP/포트에 맞게 꼭 바꿔야 함!)
+    // 예: 맥 IP가 192.168.0.10 이고 server.js 포트가 3001이면:
+    // http://192.168.0.10:3001/
+    private val robotServerBaseUrl = "http://192.168.0.10:3001/"
+
+    /**
+     * LLM 응답 문자열에서 <maum_x>(...)<maum_end> 패턴만 뽑아낸다.
+     * 예: "some text <maum_0>(direction=1)<maum_end> bla bla"
+     *  -> "<maum_0>(direction=1)<maum_end>"
+     */
+    private fun extractRobotCommand(llmResponse: String): String? {
+        val regex = Regex("<maum_\\d+>\\(.*?\\)<maum_end>")
+        val match = regex.find(llmResponse)
+        return match?.value
+    }
+
+    /**
+     * 추출된 RC카 명령을 Node.js 서버(/command)로 전송한다.
+     */
+    private fun sendRobotCommand(command: String) {
+        Log.d(TAG, "Sending robot command: $command")
+        runCatching {
+            val json = JSONObject().apply {
+                put("command", command)
+            }
+            val body = json.toString().toRequestBody("application/json".toMediaTypeOrNull())
+            val request = Request.Builder()
+                .url(robotServerBaseUrl + "command")
+                .post(body)
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    Log.d(TAG, "Successfully sent robot command: $command")
+                } else {
+                    Log.e(TAG, "Failed to send robot command: ${response.code}")
+                }
+            }
+        }.onFailure { e ->
+            Log.e(TAG, "Error sending robot command", e)
+        }
+    }
+
     private val _state = MutableStateFlow<State>(State.STATE_INIT_NOW)
     val state = _state.asStateFlow()
 
@@ -481,12 +524,26 @@ class ConversationService(
                 "${text}"
             }
 
+            // LLM 로그 전송 (기존 기능 유지)
             launch(Dispatchers.IO) { sendLlmText(response, lastLlmLatencyMs.toFloat()) }
-            var llmResponseList = LLMResponseParser.llmResponseParse(response)
+
+            // 1) LLM 응답에서 RC카 제어용 명령(<maum_x>...) 추출
+            val robotCommand = extractRobotCommand(response)
+            if (robotCommand != null) {
+                Log.d(TAG, "Robot command extracted: $robotCommand")
+                // Node 서버로 명령 전송 → 서버가 Three.js 로 전달
+                sendRobotCommand(robotCommand)
+            } else {
+                Log.d(TAG, "No robot command found in LLM response")
+            }
+
+            // 2) 기존 LLMResponseParser + TTS 흐름은 그대로 유지
+            val llmResponseList = LLMResponseParser.llmResponseParse(response)
             Log.d(TAG, "LLM Response List: $llmResponseList")
-            var ttsText = getSimpleTtsText(llmResponseList[0].token, llmResponseList[0].parameters)
+            val ttsText = getSimpleTtsText(llmResponseList[0].token, llmResponseList[0].parameters)
             Log.d(TAG, "TTS Text: $ttsText")
 
+            // 화면/음성 피드백용 문장 (한국어) -> TTS 단계로 전달
             handleEvent(Event.LlmDone(ttsText))
         }
     }

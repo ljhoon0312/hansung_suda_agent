@@ -56,17 +56,26 @@ class ConversationService(
     // RC 카 명령을 보낼 Node.js 서버 주소 (맥 IP/포트에 맞게 꼭 바꿔야 함!)
     // 예: 맥 IP가 192.168.0.10 이고 server.js 포트가 3001이면:
     // http://192.168.0.10:3001/
-    private val robotServerBaseUrl = "http://192.168.0.10:3001/"
+    private val robotServerBaseUrl = "http://192.168.0.3:3001/"
 
     /**
      * LLM 응답 문자열에서 <maum_x>(...)<maum_end> 패턴만 뽑아낸다.
      * 예: "some text <maum_0>(direction=1)<maum_end> bla bla"
      *  -> "<maum_0>(direction=1)<maum_end>"
      */
+// LLM 응답에서 RC카 제어용 명령(<maum_x>(...) 또는 <maum_x>(...)<maum_end>) 추출
     private fun extractRobotCommand(llmResponse: String): String? {
-        val regex = Regex("<maum_\\d+>\\(.*?\\)<maum_end>")
-        val match = regex.find(llmResponse)
-        return match?.value
+        // 1) 옛날 포맷: <maum_x>(...)<maum_end>
+        val regexWithEnd = Regex("<maum_\\d+>\\(.*?\\)<maum_end>")
+        val matchWithEnd = regexWithEnd.find(llmResponse)
+        if (matchWithEnd != null) {
+            return matchWithEnd.value
+        }
+
+        // 2) 지금처럼 <maum_x>(...) 만 온 경우도 허용
+        val regexWithoutEnd = Regex("<maum_\\d+>\\(.*?\\)")
+        val matchWithoutEnd = regexWithoutEnd.find(llmResponse)
+        return matchWithoutEnd?.value
     }
 
     /**
@@ -706,8 +715,26 @@ class ConversationService(
     }
 
     private fun getSimpleTtsText(token: String, parameters: Map<String, String>): String {
+        // 1) 이동/방향 계열: LLM이 <maum_1>(direction=2) 이런 식으로 보낸 경우
+        if (parameters.containsKey("direction")) {
+            val dir = parameters["direction"]
+            return when (dir) {
+                "1" -> "알겠어요, 앞으로 이동할게요."
+                "2" -> "알겠어요, 안방으로 이동할게요."   // 너가 원하는 멘트로 바꿔도 됨
+                "3" -> "알겠어요, 왼쪽으로 이동할게요."
+                "4" -> "알겠어요, 오른쪽으로 이동할게요."
+                else -> "알겠어요, 이동할게요."
+            }
+        }
+
+        // 2) 그 외는 기존처럼 DB에서 매핑을 찾되, 못 찾더라도 앱이 죽지 않게 처리
         val apiCallParam = dbHelper.selectByMultiParam(token, parameters)
-            ?: throw Exception("$token Type Not Found type : $parameters")
+
+        if (apiCallParam == null) {
+            // 매핑이 없으면 그냥 기본 응답으로 처리하고 넘어감 (크래시 X)
+            android.util.Log.w(TAG, "Unknown TTS mapping. token=$token params=$parameters")
+            return "네."
+        }
 
         return apiCallParam.answerKr
     }

@@ -5,7 +5,7 @@ import android.content.Context
 object IpConfig {
     private const val PREFS_NAME = "suda_prefs"
     private const val KEY = "ip_config"
-    private const val DEFAULT_IP = "http://10.50.2.74:3001/"        // nest.js server ip 주소
+    private const val DEFAULT_IP = "http://192.168.0.3:3001/"        // nest.js server ip 주소
 
     fun get(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

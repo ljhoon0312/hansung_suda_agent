@@ -21,9 +21,9 @@
   </script>
 
   <script type="module">
-    const ws = new WebSocket("ws://10.138.65.124:3001"); // 맥 IP로 넣기
+    const ws = new WebSocket("ws://192.168.0.3:3001"); // 맥 IP로 넣기
     ws.onopen = () => {
-      console.log("🔗 WebSocket Connected to server");
+      console.log("WebSocket Connected to server");
     };
 
     ws.onmessage = (event) => {
@@ -106,6 +106,14 @@
       1000 // far
     );
     camera.position.set(0, 5, 2); // Y축을 높여 위에서 보도록 설정
+    // === [하이라이트(펀치 줌)용 전역 변수 추가] ===
+    let isHighlighting = false;
+    let highlightStartTime = 0;
+    const highlightTotalDuration = 0.6; // 전체 줌 인+아웃 시간(초)
+
+    const camFrom = new THREE.Vector3(); // 원래 카메라 위치
+    const camTo   = new THREE.Vector3(); // RC카 가까이에서 볼 카메라 위치
+    const highlightOffset = new THREE.Vector3(0.4, 0.6, 0.8); // 차 기준으로 살짝 위/앞 대각선에서 보는 위치 오프셋
 
     // --- 5. Light 추가 ---
     let PLight = new THREE.PointLight(0xffffff, 1.0);
@@ -167,6 +175,8 @@
       }
       
       currentRoom = toRoomName; // 현재 방 상태 갱신
+      // 방 이동 명령 들어오면 카메라 하이라이트
+      triggerHighlight();
     }
         // --- maum_0 방향 명령용 수동 이동 함수 ---
     const commandMoveStep = 0.3;             // 한 번에 이동 거리
@@ -202,6 +212,22 @@
         default:
           console.error("지원하지 않는 direction 값:", direction);
       }
+      // 방향 명령이 들어올 때마다 잠깐 줌 땡기기
+      triggerHighlight();
+    }
+
+    // === [하이라이트 트리거 함수 추가] ===
+    function triggerHighlight() {
+      if (!model_car) return;
+
+      isHighlighting = true;
+      highlightStartTime = clock.getElapsedTime();
+
+      // 현재 카메라 위치 저장
+      camFrom.copy(camera.position);
+
+      // RC카 기준으로 살짝 위/앞에서 보는 위치 계산
+      camTo.copy(model_car.position).add(highlightOffset);
     }
     // --- [새 기능] 콘솔 명령어 파서 함수 ---
     /**
@@ -218,77 +244,74 @@
      * 외부 기기/안드로이드에서 받은 텍스트 명령을 파싱합니다.
      * @param {string} message - 예: "<maum_0>(direction=1)<maum_end>"
      */
-    function parseCommand(message) {
-      console.log(`수신된 원본 메시지: ${message}`);
+function parseCommand(message) {
+  console.log(`수신된 원본 메시지: ${message}`);
 
-      // 1) 방향 이동: <maum_0>(direction=1..4)<maum_end>
-      let m = message.match(/^<maum_0>\(direction=(\d+)\)<maum_end>$/);
-      if (m) {
-        const dir = Number(m[1]);
-        moveRobotInDirection(dir);
-        return;
-      }
+  // 1) 방향 이동: <maum_0>(direction=1..4)[<maum_end> 생략 가능]
+  let m = message.match(/^<maum_0>\(direction=(\d+)\)(?:<maum_end>)?$/);
+  if (m) {
+    const dir = Number(m[1]);
+    moveRobotInDirection(dir);
+    return;
+  }
 
-      // 2) 목적지 이동: <maum_1>(direction=1..3)<maum_end>
-      m = message.match(/^<maum_1>\(direction=(\d+)\)<maum_end>$/);
-      if (m) {
-        const dir = Number(m[1]);
-        if (dir === 1) {
-          console.log("명령 파싱: 'living_room'으로 이동");
-          moveToRoom("living_room");
-        } else if (dir === 2) {
-          console.log("명령 파싱: 'inner_room'으로 이동");
-          moveToRoom("inner_room");
-        } else if (dir === 3) {
-          console.log("명령 파싱: 'kitchen'으로 이동");
-          moveToRoom("kitchen");
-        } else {
-          console.error("지원하지 않는 목적지 direction:", dir);
-        }
-        return;
-      }
-
-      // 3) 시간 알림: <maum_2>(mode=2, time="...")<maum_end>
-      m = message.match(/^<maum_2>\(mode=2,\s*time="(.+)"\)<maum_end>$/);
-      if (m) {
-        const timeString = m[1];
-        console.log(`명령 파싱: 알람 설정, 추출된 시간 = ${timeString}`);
-        // setAlarm(timeString); // 필요하면 나중에 구현
-        return;
-      }
-
-      // 4) 속도 조절: <maum_3>(mode=1|2)<maum_end>
-      m = message.match(/^<maum_3>\(mode=(\d+)\)<maum_end>$/);
-      if (m) {
-        const mode = Number(m[1]);
-        if (mode === 1) {
-          console.log("속도 업 (지금은 로그만)");
-          // 나중에 commandMoveStep / commandRotateStep 조절 코드를 여기 넣어도 됨
-        } else if (mode === 2) {
-          console.log("속도 다운 (지금은 로그만)");
-        } else {
-          console.error("지원하지 않는 속도 모드:", mode);
-        }
-        return;
-      }
-
-      // 5) 핸드폰 찾기: <maum_4>(mode=1|2)<maum_end>
-      m = message.match(/^<maum_4>\(mode=(\d+)\)<maum_end>$/);
-      if (m) {
-        const mode = Number(m[1]);
-        if (mode === 1) {
-          console.log("핸드폰 찾기: 소리로 찾기 (지금은 로그만)");
-        } else if (mode === 2) {
-          console.log("핸드폰 찾기: 진동으로 찾기 (지금은 로그만)");
-        } else {
-          console.error("지원하지 않는 핸드폰 찾기 모드:", mode);
-        }
-        return;
-      }
-
-      // 그 외
-      console.error(`알 수 없는 명령입니다: ${message}`);
+  // 2) 목적지 이동: <maum_1>(direction=1..3)[<maum_end> 생략 가능]
+  m = message.match(/^<maum_1>\(direction=(\d+)\)(?:<maum_end>)?$/);
+  if (m) {
+    const dir = Number(m[1]);
+    if (dir === 1) {
+      console.log("명령 파싱: 'living_room'으로 이동");
+      moveToRoom("living_room");
+    } else if (dir === 2) {
+      console.log("명령 파싱: 'inner_room'으로 이동");
+      moveToRoom("inner_room");
+    } else if (dir === 3) {
+      console.log("명령 파싱: 'kitchen'으로 이동");
+      moveToRoom("kitchen");
+    } else {
+      console.error("지원하지 않는 목적지 direction:", dir);
     }
+    return;
+  }
+
+  // 3) 시간 알림: <maum_2>(mode=2, time="...")[<maum_end> 옵션]
+  m = message.match(/^<maum_2>\(mode=2,\s*time="(.+)"\)(?:<maum_end>)?$/);
+  if (m) {
+    const timeString = m[1];
+    console.log(`명령 파싱: 알람 설정, 추출된 시간 = ${timeString}`);
+    return;
+  }
+
+  // 4) 속도 조절: <maum_3>(mode=1|2)[<maum_end> 옵션]
+  m = message.match(/^<maum_3>\(mode=(\d+)\)(?:<maum_end>)?$/);
+  if (m) {
+    const mode = Number(m[1]);
+    if (mode === 1) {
+      console.log("속도 업 (지금은 로그만)");
+    } else if (mode === 2) {
+      console.log("속도 다운 (지금은 로그만)");
+    } else {
+      console.error("지원하지 않는 속도 모드:", mode);
+    }
+    return;
+  }
+
+  // 5) 핸드폰 찾기: <maum_4>(mode=1|2)[<maum_end> 옵션]
+  m = message.match(/^<maum_4>\(mode=(\d+)\)(?:<maum_end>)?$/);
+  if (m) {
+    const mode = Number(m[1]);
+    if (mode === 1) {
+      console.log("핸드폰 찾기: 소리로 찾기 (지금은 로그만)");
+    } else if (mode === 2) {
+      console.log("핸드폰 찾기: 진동으로 찾기 (지금은 로그만)");
+    } else {
+      console.error("지원하지 않는 핸드폰 찾기 모드:", mode);
+    }
+    return;
+  }
+
+  console.error(`알 수 없는 명령입니다: ${message}`);
+}
 
     // 콘솔에서 'parseCommand' 함수를 호출할 수 있도록 전역에 노출
     window.parseCommand = parseCommand;
@@ -301,9 +324,40 @@
       requestAnimationFrame(animate);
 
       const delta = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
 
-      // 마우스 휠 줌을 위해 카메라는 항상 원점을 바라봄
-      camera.lookAt(0, 0, 0);
+      // === [카메라 하이라이트(펀치 줌) 처리] ===
+      if (isHighlighting && model_car) {
+        let t = (elapsed - highlightStartTime) / highlightTotalDuration;
+
+        if (t >= 1) {
+          // 하이라이트 끝
+          isHighlighting = false;
+          camera.position.copy(camFrom); // 원래 자리로 복귀
+          camera.lookAt(0, 0, 0);        // 기존처럼 방 전체 바라보기
+        } else {
+          // 0~0.5 : camFrom → camTo, 0.5~1 : camTo → camFrom
+          let phase, from, to;
+          if (t < 0.5) {
+            phase = t / 0.5;
+            from  = camFrom;
+            to    = camTo;
+          } else {
+            phase = (t - 0.5) / 0.5;
+            from  = camTo;
+            to    = camFrom;
+          }
+
+          // 부드러운 이징 (smoothstep)
+          const e = phase * phase * (3 - 2 * phase);
+
+          camera.position.lerpVectors(from, to, e);
+          camera.lookAt(model_car.position); // 줌하는 동안은 RC카를 바라봄
+        }
+      } else {
+        // 하이라이트 아닐 때는 기존처럼 원점(집 전체) 바라보기
+        camera.lookAt(0, 0, 0);
+      }
 
       if (model_car) {
         // A. 자동 이동 모드 (currentTarget이 설정된 경우)

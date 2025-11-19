@@ -78,7 +78,7 @@
       car_y,
       -0.15
     );
-
+    
     // 이동 경로(Path) 데이터
     const pathData = {
       living_room_to_inner_room: [ INNER_ROOM_DOORWAY, roomData.inner_room ],
@@ -88,6 +88,15 @@
       inner_room_to_kitchen: [ INNER_ROOM_DOORWAY, roomData.living_room, KITCHEN_DOORWAY, roomData.kitchen ],
       kitchen_to_inner_room: [ KITCHEN_DOORWAY, roomData.living_room, INNER_ROOM_DOORWAY, roomData.inner_room ]
     };
+
+    // --- 핸드폰 스폰 포인트 ---
+    const effectSpawnPoints = [
+      new THREE.Vector3(0.7, car_y, 1.1),   
+      new THREE.Vector3(0.65, car_y, -0.4),  
+      new THREE.Vector3(-1.0,car_y, 0.25),  
+      new THREE.Vector3(-1.0, car_y, -1.1),  
+    ];
+// --------------------------------------------------
 
     // 자동 이동 상태 변수
     let currentRoom = "living_room"; // 자동차의 현재 방 (시작 위치)
@@ -105,6 +114,31 @@
       0.1, // near
       1000 // far
     );
+
+    // --- [새 기능] 오디오 리스너 & 이펙트 관리 ---
+    // 1. 카메라에 귀(AudioListener)를 달아줍니다.
+    const listener = new THREE.AudioListener();
+    camera.add(listener);
+
+    // 2. 사운드와 이미지를 로드할 로더 준비
+    const audioLoader = new THREE.AudioLoader();
+    const textureLoader = new THREE.TextureLoader();
+
+    // 3. 활성화된 이펙트들을 저장할 배열 (애니메이션 용)
+    const activeEffects = []; 
+
+    // 4. 리소스 미리 로드 (경로는 실제 파일명에 맞게 수정하세요)
+    let effectSoundBuffer = null;
+    let effectTexture = null;
+
+    audioLoader.load('models/bip.mp3', function(buffer) {
+        effectSoundBuffer = buffer;
+    });
+    
+    textureLoader.load('models/note_img.png', function(texture) {
+        effectTexture = texture;
+    });
+    // ------------------------------------------
     camera.position.set(0, 5, 2); // Y축을 높여 위에서 보도록 설정
     // === [하이라이트(펀치 줌)용 전역 변수 추가] ===
     let isHighlighting = false;
@@ -133,7 +167,7 @@
     let loader = new GLTFLoader();
     
     const modelPath_House = "models/house_ex4.glb";
-    const modelPath_Car = "models/car_pika.glb"; // (경로 뒤 공백 제거됨)
+    const modelPath_Car = "models/car_bot.glb"; // (경로 뒤 공백 제거됨)
 
     loader.load(modelPath_House, function (gltf) {
       const model = gltf.scene;
@@ -179,7 +213,8 @@
       triggerHighlight();
     }
         // --- maum_0 방향 명령용 수동 이동 함수 ---
-    const commandMoveStep = 0.3;             // 한 번에 이동 거리
+    const MoveSpeed = 0.5;
+    const commandMoveStep = MoveSpeed;             // 한 번에 이동 거리
     const commandRotateStep = Math.PI / 12;  // 한 번에 회전 각도
 
     function moveRobotInDirection(direction) {
@@ -214,6 +249,72 @@
       }
       // 방향 명령이 들어올 때마다 잠깐 줌 땡기기
       triggerHighlight();
+    }
+    // --- [새 기능] 랜덤 이펙트 생성 함수 ---
+   function triggerRandomEffect() {
+        if (!effectSoundBuffer || !effectTexture) {
+            console.log("리소스 로딩 중...");
+            return; 
+        }
+
+        // [수정된 부분] ------------------------------------------
+        // 1. 스폰 포인트 배열의 길이 내에서 랜덤한 인덱스(0 ~ 4)를 뽑습니다.
+        const randomIndex = Math.floor(Math.random() * effectSpawnPoints.length);
+        
+        // 2. 해당 인덱스의 좌표를 가져옵니다.
+        const selectedPoint = effectSpawnPoints[randomIndex];
+        
+        console.log(`💥 이펙트 발생! 인덱스: ${randomIndex}, 좌표: ${selectedPoint.x}, ${selectedPoint.z}`);
+        // ------------------------------------------------------
+
+        // 3. 시각 효과 (Sprite) 생성
+        const material = new THREE.SpriteMaterial({ 
+            map: effectTexture, 
+            color: 0xffffff, 
+            transparent: true,
+            blending: THREE.AdditiveBlending 
+        });
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(0.5, 0.5, 0.5); 
+        
+        // [중요] 선택된 좌표로 위치 설정
+        sprite.position.copy(selectedPoint); 
+        sprite.position.y = 1.0;
+        
+        scene.add(sprite);
+
+        // 4. 3D 사운드 생성
+        const sound = new THREE.PositionalAudio(listener);
+        sound.setBuffer(effectSoundBuffer);
+        sound.setRefDistance(1); 
+        sound.setVolume(1.0);    
+        
+        sprite.add(sound);
+        sound.play();
+
+        // 5. 관리 배열에 추가
+        activeEffects.push({ mesh: sprite, life: 1.0, opacity: 1.0 , tpe: 'sound'});
+    }
+    function triggerVibrationEffect() {
+        // 랜덤 위치 선택
+        const randomIndex = Math.floor(Math.random() * effectSpawnPoints.length);
+        const selectedPoint = effectSpawnPoints[randomIndex];
+        console.log(`📳 진동 발생! 인덱스: ${randomIndex}`);
+
+        // 링 생성
+        const geometry = new THREE.RingGeometry(0.1, 0.15, 32);
+        const material = new THREE.MeshBasicMaterial({ 
+            color: 0xffff00, transparent: true, opacity: 1.0, side: THREE.DoubleSide 
+        });
+        const shockwave = new THREE.Mesh(geometry, material);
+        
+        shockwave.position.copy(selectedPoint);
+        shockwave.rotation.x = -Math.PI / 2; // 바닥에 눕힘
+        shockwave.position.y = 1.0; // 바닥 살짝 위
+        scene.add(shockwave);
+
+        // 배열에 추가 (type: 'vibration'으로 구분)
+        activeEffects.push({ mesh: shockwave, life: 1.0, type: 'vibration' });
     }
 
     // === [하이라이트 트리거 함수 추가] ===
@@ -275,21 +376,25 @@ function parseCommand(message) {
   }
 
   // 3) 시간 알림: <maum_2>(mode=2, time="...")[<maum_end> 옵션]
-  m = message.match(/^<maum_2>\(mode=2,\s*time="(.+)"\)(?:<maum_end>)?$/);
-  if (m) {
-    const timeString = m[1];
-    console.log(`명령 파싱: 알람 설정, 추출된 시간 = ${timeString}`);
-    return;
-  }
+  const timeMatch = message.match(/<maum_2>\(mode=2,\s*time="([^"]+)"\)<maum_end>/);
 
+    if (timeMatch) {
+      const timeString = timeMatch[1]; // 캡처된 시간 값 (예: "일곱시이십오분")
+      console.log(`⏰ 알람 설정 감지: ${timeString}`);
+        
+      // (여기에 알람 설정 로직을 추가하시면 됩니다)
+      return; // 처리 완료 후 함수 종료
+    }
   // 4) 속도 조절: <maum_3>(mode=1|2)[<maum_end> 옵션]
   m = message.match(/^<maum_3>\(mode=(\d+)\)(?:<maum_end>)?$/);
   if (m) {
     const mode = Number(m[1]);
     if (mode === 1) {
-      console.log("속도 업 (지금은 로그만)");
+      console.log("속도 업");
+      MoveSpeed +=0.2;
     } else if (mode === 2) {
-      console.log("속도 다운 (지금은 로그만)");
+      console.log("속도 다운");
+      MoveSpeed -=0.2;
     } else {
       console.error("지원하지 않는 속도 모드:", mode);
     }
@@ -301,9 +406,11 @@ function parseCommand(message) {
   if (m) {
     const mode = Number(m[1]);
     if (mode === 1) {
-      console.log("핸드폰 찾기: 소리로 찾기 (지금은 로그만)");
+      console.log("핸드폰 찾기: 소리로 찾기");
+      triggerRandomEffect();
     } else if (mode === 2) {
       console.log("핸드폰 찾기: 진동으로 찾기 (지금은 로그만)");
+      triggerVibrationEffect();
     } else {
       console.error("지원하지 않는 핸드폰 찾기 모드:", mode);
     }
@@ -325,6 +432,26 @@ function parseCommand(message) {
 
       const delta = clock.getDelta();
       const elapsed = clock.getElapsedTime();
+
+     // --- [수정] 이펙트 애니메이션 (타입별 분기) ---
+      for (let i = activeEffects.length - 1; i >= 0; i--) {
+          const effect = activeEffects[i];
+          
+          // 공통: 수명 감소
+          effect.life -= 0.02;
+          effect.mesh.material.opacity = effect.life;
+
+          effect.mesh.scale.multiplyScalar(1.02); 
+
+          // 삭제 로직
+          if (effect.life <= 0) {
+              scene.remove(effect.mesh);
+              if(effect.mesh.geometry) effect.mesh.geometry.dispose();
+              if(effect.mesh.material) effect.mesh.material.dispose();
+              activeEffects.splice(i, 1);
+          }
+      }
+      // ---------------------------------------
 
       // === [카메라 하이라이트(펀치 줌) 처리] ===
       if (isHighlighting && model_car) {

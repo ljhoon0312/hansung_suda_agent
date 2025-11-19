@@ -6,10 +6,73 @@
   <style>
     body { margin: 0; }
     canvas { display: block; }
+    /* ... 기존 스타일 ... */
+    
+    /* [새 기능] 알람 UI 디자인 */
+   /* [수정] 알람 컨테이너 스타일 */
+    #alarm-container {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        width: 250px;
+        /* 알람이 많아지면 스크롤 생기게 설정 */
+        max-height: 400px; 
+        overflow-y: auto;
+        
+        /* 마우스 클릭 통과 X (삭제 버튼 눌러야 하므로) */
+        pointer-events: auto; 
+        
+        display: flex;
+        flex-direction: column;
+        gap: 10px; /* 알람 사이 간격 */
+        z-index: 1000; /* 다른 요소보다 위에 */
+    }
+
+    /* [새 기능] 개별 알람 아이템 스타일 */
+    .alarm-item {
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 15px;
+        font-family: 'Pretendard', sans-serif;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        cursor: pointer; /* 클릭 가능하다는 손가락 표시 */
+        transition: all 0.2s ease;
+        
+        display: flex;
+        justify-content: space-between; /* 시간과 삭제 아이콘 양끝 배치 */
+        align-items: center;
+    }
+
+    /* 마우스 올렸을 때 효과 */
+    .alarm-item:hover {
+        background-color: rgba(255, 80, 80, 0.9); /* 붉은색으로 변함 */
+        transform: scale(1.03); /* 살짝 커짐 */
+    }
+
+    /* 삭제될 때 애니메이션 효과 */
+    .alarm-item.removing {
+        opacity: 0;
+        transform: translateX(50px);
+    }
+    
+    /* 시간 텍스트 스타일 */
+    .alarm-time {
+        font-size: 18px;
+        font-weight: bold;
+    }
+    
+    /* 삭제 안내 텍스트 (작게) */
+    .delete-hint {
+        font-size: 12px;
+        opacity: 0.7;
+        margin-left: 10px;
+    }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
+  <div id="alarm-container"></div>
 
   <script type="importmap">
     {
@@ -45,6 +108,10 @@
     let model_car;
     const clock = new THREE.Clock();
 
+    // [새 기능] 부드러운 이동을 위한 목표 지점 변수
+    let targetPosition = null;
+    let targetRotation = 0; // Y축 회전값 (라디안)
+    // -------------------------------------------
     // 키보드 상태
     const keys = {
       ArrowUp: false,
@@ -129,12 +196,18 @@
 
     // 4. 리소스 미리 로드 (경로는 실제 파일명에 맞게 수정하세요)
     let effectSoundBuffer = null;
+    let alarmSoundBuffer = null;
     let effectTexture = null;
+
+    //알람 관리용 리스트
+    const alarmList = [];
 
     audioLoader.load('models/bip.mp3', function(buffer) {
         effectSoundBuffer = buffer;
     });
-    
+    audioLoader.load('models/Alarm.mp3', function(buffer) {
+        alarmSoundBuffer = buffer;
+    });
     textureLoader.load('models/note_img.png', function(texture) {
         effectTexture = texture;
     });
@@ -180,6 +253,10 @@
       model_car.scale.set(0.1, 0.1, 0.1);
       model_car.position.set(0.0,car_y,-0.3);
       scene.add(model_car);
+      // [새 기능] 로드 직후, 목표 지점을 현재 위치로 초기화
+      targetPosition = model_car.position.clone();
+      targetRotation = model_car.rotation.y;
+      // -------------------------------------------------
     });
 
     // --- 8. 자동 이동 함수 ---
@@ -210,45 +287,60 @@
       
       currentRoom = toRoomName; // 현재 방 상태 갱신
       // 방 이동 명령 들어오면 카메라 하이라이트
-      triggerHighlight();
+      //triggerHighlight();
     }
         // --- maum_0 방향 명령용 수동 이동 함수 ---
-    const MoveSpeed = 0.1;
-    const commandMoveStep = MoveSpeed;             // 한 번에 이동 거리
-    const commandRotateStep = Math.PI / 12;  // 한 번에 회전 각도
+    let MoveSpeed = 2;
+    let MoveStep = 1;
+    let commandMoveStep = MoveStep * 0.03;  // 한 번에 이동 거리
+    let commandMoveSpeed = MoveSpeed *0.1; // MoveSpeed*속도보정계수
+    let commandRotateStep = Math.PI / 12;  // 한 번에 회전 각도
 
-    function moveRobotInDirection(direction) {
-      if (!model_car) {
-        console.error("model_car가 아직 로드되지 않았습니다.");
+   function moveRobotInDirection(direction) {
+      if (!model_car || !targetPosition) { // targetPosition 체크 추가
+        console.error("model_car가 아직 준비되지 않았습니다.");
         return;
       }
 
-      // 수동 제어 들어오면 자동 경로는 끊어버림
-      currentTarget = null;
+      // 수동 제어 시 자동 경로 끊기
+      currentTarget = null; 
       movementQueue = [];
+
+      // 이동 거리 계산 (스케일 보정 포함)
+      const step = commandMoveStep / model_car.scale.x;
 
       switch (direction) {
         case 1: // 앞으로
-          model_car.translateZ(commandMoveStep / model_car.scale.x);
-          console.log("앞으로 이동");
+          // 현재 로봇이 바라보는 방향(local Z)을 계산해서 목표 위치에 더함
+          const forward = new THREE.Vector3(0, 0, 1);
+          forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), targetRotation);
+          targetPosition.add(forward.multiplyScalar(step));
+          
+          console.log("앞으로 이동 (목표 설정)");
           break;
+
         case 2: // 뒤로
-          model_car.translateZ(-commandMoveStep / model_car.scale.x);
-          console.log("뒤로 이동");
+          const backward = new THREE.Vector3(0, 0, 1);
+          backward.applyAxisAngle(new THREE.Vector3(0, 1, 0), targetRotation);
+          targetPosition.add(backward.multiplyScalar(-step));
+          
+          console.log("뒤로 이동 (목표 설정)");
           break;
+
         case 3: // 왼쪽 회전
-          model_car.rotation.y += commandRotateStep;
-          console.log("왼쪽 회전");
+          targetRotation += commandRotateStep;
+          console.log("왼쪽 회전 (목표 설정)");
           break;
+
         case 4: // 오른쪽 회전
-          model_car.rotation.y -= commandRotateStep;
-          console.log("오른쪽 회전");
+          targetRotation -= commandRotateStep;
+          console.log("오른쪽 회전 (목표 설정)");
           break;
+
         default:
-          console.error("지원하지 않는 direction 값:", direction);
+          console.error("지원하지 않는 direction:", direction);
       }
-      // 방향 명령이 들어올 때마다 잠깐 줌 땡기기
-      triggerHighlight();
+      //triggerHighlight();
     }
     // --- [새 기능] 랜덤 이펙트 생성 함수 ---
    function triggerRandomEffect() {
@@ -295,6 +387,44 @@
         // 5. 관리 배열에 추가
         activeEffects.push({ mesh: sprite, life: 1.0, opacity: 1.0 , tpe: 'sound'});
     }
+    // --- [새 기능] 로봇 위치에서 알람 울리기 ---
+    function triggerAlarm() {
+        // 1. 준비물 확인 (로봇, 사운드)
+        if (!model_car || !alarmSoundBuffer) {
+            console.log("로봇이 없거나 알람 사운드가 로딩되지 않았습니다.");
+            return; 
+        }
+        // 2. 시각 효과: 붉은색 링 (RingGeometry)
+        const geometry = new THREE.RingGeometry(0.15, 0.25, 32);
+        const material = new THREE.MeshBasicMaterial({ 
+            color: 0xff0000, // 새빨간색
+            transparent: true, 
+            opacity: 1.0, 
+            side: THREE.DoubleSide 
+        });
+        const shockwave = new THREE.Mesh(geometry, material);
+        
+        // 3. 위치 설정 (중요: 로봇의 현재 위치 복사)
+        shockwave.position.copy(model_car.position);
+        
+        // 바닥에 눕히고 높이 미세 조정
+        shockwave.rotation.x = -Math.PI / 2; 
+        shockwave.position.y = 0.5; 
+        scene.add(shockwave);
+
+        // 4. 청각 효과: 3D 사운드
+        const sound = new THREE.PositionalAudio(listener);
+        sound.setBuffer(alarmSoundBuffer);
+        sound.setRefDistance(1); 
+        sound.setVolume(1.5); // 알람이니까 소리를 좀 더 크게
+        
+        // 링에 소리를 붙여서 재생
+        shockwave.add(sound);
+        sound.play();
+
+        // 5. 관리 배열에 추가 (type: 'alarm'으로 구분)
+        activeEffects.push({ mesh: shockwave, life: 2.0, type: 'alarm' });
+    }
     function triggerVibrationEffect() {
         // 랜덤 위치 선택
         const randomIndex = Math.floor(Math.random() * effectSpawnPoints.length);
@@ -330,6 +460,124 @@
       // RC카 기준으로 살짝 위/앞에서 보는 위치 계산
       camTo.copy(model_car.position).add(highlightOffset);
     }
+    /**
+ * "5시", "6시반", "10시 20분", "1시간 뒤" 형식을 숫자로 변환
+ */
+function convertKoreanToTime(text) {
+  // 1. 공백 제거 ("5 시" -> "5시")
+  text = text.replace(/\s+/g, ''); 
+
+  let hour = 0;
+  let minute = 0;
+  let isRelative = false; // "뒤", "후" 여부
+
+  // 2. 상대 시간(타이머) 확인
+  if (text.includes('뒤') || text.includes('후')) {
+    isRelative = true;
+  }
+
+  // 3. '시' 파싱 (앞에 있는 숫자를 가져옴)
+  // parseInt는 문자열 앞부분의 숫자만 읽고 문자가 나오면 멈춥니다.
+  // 예: "5시..." -> 5, "12시..." -> 12
+  let parsedHour = parseInt(text); 
+  if (!isNaN(parsedHour)) {
+    hour = parsedHour;
+  }
+
+  // 4. 오전/오후 처리 (절대 시간일 경우만)
+  if (!isRelative) {
+    if ((text.includes('오후') || text.includes('저녁') || text.includes('밤')) && hour < 12) {
+      hour += 12;
+    }
+  }
+
+  // 5. '분' 파싱
+  if (text.includes('반')) {
+    minute = 30; // "6시반" -> 30분
+  } else if (text.includes('분')) {
+    // "시" 뒤에 있는 숫자를 찾아야 함
+    if (text.includes('시')) {
+      // "5시20분" -> "시"로 자르면 ["5", "20분"] -> 두 번째 조각 파싱
+      const parts = text.split('시');
+      const minPart = parseInt(parts[1]);
+      if (!isNaN(minPart)) minute = minPart;
+    } else {
+      // "시" 없이 "30분뒤" 같은 경우
+      const minPart = parseInt(text);
+      if (!isNaN(minPart)) minute = minPart;
+    }
+  }
+
+  return { hour, minute, isRelative };
+}
+
+// --- [수정] 알람 울림 시뮬레이션 ---
+    function ringAlarm() {
+        console.log("🔔 띠리링! 알람이 울립니다!");
+
+        // 1. [수정] 로봇 위치에서 'Alarm.mp3'와 함께 링 발생
+        triggerAlarm();
+
+        // 2. UI 깜빡임 효과 (기존 동일)
+        const container = document.getElementById("alarm-container");
+        if (container) {
+            container.style.backgroundColor = "rgba(255, 0, 0, 0.5)";
+            container.style.transform = "scale(1.1)";
+            container.style.transition = "all 0.2s";
+
+            setTimeout(() => {
+                container.style.backgroundColor = "";
+                container.style.transform = "scale(1.0)";
+            }, 500);
+        }
+    }
+    // --- [수정] 알람 UI 및 데이터 관리 함수 ---
+    function addAlarmToUI(targetTime) {
+        const container = document.getElementById("alarm-container");
+        
+        const timeString = targetTime.toLocaleTimeString('ko-KR', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+
+        const item = document.createElement("div");
+        item.className = "alarm-item";
+        item.innerHTML = `
+            <span class="alarm-time">⏰ ${timeString}</span>
+            <span class="delete-hint">✖</span>
+        `;
+
+        const alarmData = { 
+            time: targetTime, 
+            element: item     
+        };
+        alarmList.push(alarmData);
+        console.log(`💾 데이터 저장됨. 현재 알람 개수: ${alarmList.length}개`);
+
+        // [수정된 클릭 이벤트]
+        item.addEventListener("click", function() {
+            
+            // 1. [추가됨] 삭제하기 전에 알람 효과(진동+UI깜빡임) 실행!
+            ringAlarm(); 
+
+            // 2. 삭제 애니메이션 시작 (붉게 변하며 사라짐)
+            item.classList.add("removing");
+            
+            // 3. 0.3초 뒤에 데이터 및 UI 완전히 제거
+            setTimeout(() => {
+                item.remove(); 
+                
+                const index = alarmList.indexOf(alarmData);
+                if (index > -1) {
+                    alarmList.splice(index, 1);
+                    console.log(`🗑️ 알람 확인 및 삭제됨: ${timeString}`);
+                }
+            }, 300);
+        });
+
+        container.appendChild(item); 
+    }
+    // ------------------------------------------
     // --- [새 기능] 콘솔 명령어 파서 함수 ---
     /**
      * (F12 콘솔 테스트용)
@@ -376,29 +624,72 @@ function parseCommand(message) {
   }
 
   // 3) 시간 알림: <maum_2>(mode=2, time="...")[<maum_end> 옵션]
-  const timeMatch = message.match(/<maum_2>\(mode=2,\s*time="([^"]+)"\)<maum_end>/);
+  const timeMatch = message.match(/<maum_2>\(mode=2,\s*time="([^"]+)"\)(?:<maum_end>)?$/);
 
-    if (timeMatch) {
-      const timeString = timeMatch[1]; // 캡처된 시간 값 (예: "일곱시이십오분")
-      console.log(`⏰ 알람 설정 감지: ${timeString}`);
+  if (timeMatch) {
+      const rawTime = timeMatch[1]; // 예: "일곱시이십오분"
+      // [수정] 한글 파서 호출!
+      const timeData = convertKoreanToTime(rawTime);
+      
+     if (timeMatch) {
+      const rawTime = timeMatch[1]; 
+      const timeData = convertKoreanToTime(rawTime);
+      
+      // 1. 기준이 될 현재 시간 객체 생성
+      const targetTime = new Date();
+
+      if (timeData.isRelative) {
+        // --- A. 상대 시간 (타이머) ---
+        // 현재 시간 + 입력된 시간
+        targetTime.setHours(targetTime.getHours() + timeData.hour);
+        targetTime.setMinutes(targetTime.getMinutes() + timeData.minute);
         
-      // (여기에 알람 설정 로직을 추가하시면 됩니다)
-      return; // 처리 완료 후 함수 종료
+        console.log(`⏰ [타이머] "${rawTime}" 감지 (+${timeData.hour}시간 ${timeData.minute}분)`);
+
+      } else {
+        // --- B. 절대 시간 (알람) ---
+        // 시간을 입력된 값으로 "고정"
+        targetTime.setHours(timeData.hour);
+        targetTime.setMinutes(timeData.minute);
+        targetTime.setSeconds(0); // 초는 00초로 깔끔하게
+
+        // (선택 사항) 만약 설정한 시간이 현재보다 과거라면(예: 오후 3시에 '오전 9시' 설정), 
+        // '내일'로 잡아야 하지만, 일단은 오늘 날짜 기준으로 설정합니다.
+        
+        console.log(`⏰ [알람] "${rawTime}" 감지 -> ${timeData.hour}시 ${timeData.minute}분으로 설정`);
+      }
+
+   // -------------------------------------------------------
+      // [수정] 이제 함수 호출 한 번으로 리스트에 추가합니다!
+      addAlarmToUI(targetTime);
+      // -------------------------------------------------------
+      
+      console.log(`   => 목표 시각: ${targetTime.toLocaleTimeString()}`);
     }
-  // 4) 속도 조절: <maum_3>(mode=1|2)[<maum_end> 옵션]
+    return;
+  }
+ // 4) 속도 조절: <maum_3>(mode=1|2)[<maum_end> 옵션]
   m = message.match(/^<maum_3>\(mode=(\d+)\)(?:<maum_end>)?$/);
   if (m) {
     const mode = Number(m[1]);
+    
     if (mode === 1) {
       console.log("속도 업");
-      MoveSpeed +=0.2;
+      MoveSpeed *= 2; // 1. 기준 속도 증가
+
+      // [수정 2] 속도(Lerp)는 최대 0.99까지만 커지도록 제한합니다. (1.0 넘으면 에러!)
+      commandMoveSpeed = Math.min(MoveSpeed * 0.1, 0.99); 
+      
+      console.log(`현재 보폭: ${commandMoveStep.toFixed(3)}, 속도: ${commandMoveSpeed.toFixed(3)}`);
+
     } else if (mode === 2) {
       console.log("속도 다운");
-      MoveSpeed -=0.2;
-      if (MoveSpeed <= 0.0 ){
-        MoveSpeed +=0.2; 
-        console.log("속도는 음수가 될수 없습니다.");
-      }
+      MoveSpeed *= 0.5;
+      // 속도 재계산
+      commandMoveSpeed = Math.min(MoveSpeed * 0.1, 0.9);
+      
+      console.log(`현재 보폭: ${commandMoveStep.toFixed(3)}, 속도: ${commandMoveSpeed.toFixed(3)}`);
+      
     } else {
       console.error("지원하지 않는 속도 모드:", mode);
     }
@@ -420,7 +711,6 @@ function parseCommand(message) {
     }
     return;
   }
-
   console.error(`알 수 없는 명령입니다: ${message}`);
 }
 
@@ -438,16 +728,26 @@ function parseCommand(message) {
       const elapsed = clock.getElapsedTime();
 
      // --- [수정] 이펙트 애니메이션 (타입별 분기) ---
-      for (let i = activeEffects.length - 1; i >= 0; i--) {
+for (let i = activeEffects.length - 1; i >= 0; i--) {
           const effect = activeEffects[i];
           
-          // 공통: 수명 감소
+          // 공통: 투명도 감소
           effect.life -= 0.02;
-          effect.mesh.material.opacity = effect.life;
+          effect.mesh.material.opacity = Math.min(1.0, effect.life); // 1.0을 넘지 않게
 
-          effect.mesh.scale.multiplyScalar(1.02); 
+          // --- [타입별 애니메이션 분기] ---
+          if (effect.type === 'explosion') {
+              effect.mesh.scale.multiplyScalar(1.02); 
 
-          // 삭제 로직
+          } else if (effect.type === 'vibration') {
+              effect.mesh.scale.multiplyScalar(1.03); 
+
+          } else if (effect.type === 'alarm') { 
+              effect.mesh.scale.multiplyScalar(1.015); 
+          }
+          // -----------------------------
+
+          // 삭제 로직 (수명 끝)
           if (effect.life <= 0) {
               scene.remove(effect.mesh);
               if(effect.mesh.geometry) effect.mesh.geometry.dispose();
@@ -508,22 +808,15 @@ function parseCommand(message) {
           }
         } 
         // B. 수동 조작 모드 (currentTarget이 null인 경우)
-        else {
-          const moveSpeed = 0.1 * delta;
-          const rotateSpeed = 5 * delta;
+        else if (targetPosition) {
+          
+          // 1. 위치 부드럽게 이동 (commandMoveSpeed는 속도, 높을수록 빠름)
+          model_car.position.lerp(targetPosition, commandMoveSpeed);
 
-          if (keys.ArrowUp) {
-            model_car.translateZ((moveSpeed / model_car.scale.x));
-          }
-          if (keys.ArrowDown) {
-            model_car.translateZ(-(moveSpeed / model_car.scale.x));
-          }
-          if (keys.ArrowLeft) {
-            model_car.rotation.y += rotateSpeed;
-          }
-          if (keys.ArrowRight) {
-            model_car.rotation.y -= rotateSpeed;
-          }
+          // 2. 회전 부드럽게 이동
+          // (단순 lerp 구현: 현재 값과 목표 값의 차이를 조금씩 줄임)
+          model_car.rotation.y += (targetRotation - model_car.rotation.y) * 0.1;
+
         }
       }
 

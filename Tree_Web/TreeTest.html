@@ -213,7 +213,7 @@
       triggerHighlight();
     }
         // --- maum_0 방향 명령용 수동 이동 함수 ---
-    const MoveSpeed = 0.5;
+    const MoveSpeed = 0.1;
     const commandMoveStep = MoveSpeed;             // 한 번에 이동 거리
     const commandRotateStep = Math.PI / 12;  // 한 번에 회전 각도
 
@@ -395,6 +395,10 @@ function parseCommand(message) {
     } else if (mode === 2) {
       console.log("속도 다운");
       MoveSpeed -=0.2;
+      if (MoveSpeed <= 0.0 ){
+        MoveSpeed +=0.2; 
+        console.log("속도는 음수가 될수 없습니다.");
+      }
     } else {
       console.error("지원하지 않는 속도 모드:", mode);
     }

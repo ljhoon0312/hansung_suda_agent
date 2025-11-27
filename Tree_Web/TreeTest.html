@@ -103,6 +103,7 @@
     // --- 모듈 임포트 ---
     import * as THREE from 'three';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
     // --- 전역 변수 ---
     let model_car;
@@ -228,6 +229,42 @@
     PLight.position.set(10, 10, 10);
     scene.add(PLight, ALight);
 
+    // --- [새 기능] 방 이름표 만들기 ---
+    function createRoomLabel(name, position) {
+        const div = document.createElement('div');
+        div.className = 'label';
+        // HTML로 스타일링 (반투명 검은 박스에 흰 글씨)
+        div.textContent = name;
+        div.style.marginTop = '-1em'; // 라벨 위치 미세 조정
+        div.style.color = 'white';
+        div.style.background = 'rgba(200, 0, 0, 0.6)';
+        div.style.padding = '6px 14px';
+        div.style.borderRadius = '12px';
+        div.style.fontFamily = 'Pretendard, sans-serif';
+        div.style.fontSize = '20px';
+        div.style.fontWeight = 'bold';
+        div.style.border = '1px solid rgba(255, 255, 255, 0.3)';
+
+        const label = new CSS2DObject(div);
+        label.position.copy(position);
+        label.position.y += 0.0; // 바닥보다 1.5m 위에 둥둥 띄우기
+        scene.add(label);
+    }
+
+    // roomData에 있는 모든 방에 라벨 붙이기
+    // (한글 이름으로 변환해서 표시)
+    const roomNamesKr = {
+        living_room: "거실",
+        inner_room: "안방",
+        kitchen: "주방"
+    };
+
+    for (const [key, pos] of Object.entries(roomData)) {
+        const krName = roomNamesKr[key] || key;
+        createRoomLabel(krName, pos);
+    }
+    // ----------------------------------------
+
     // --- 6. Renderer 생성 ---
     let renderer = new THREE.WebGLRenderer({
       canvas: document.querySelector("#canvas"),
@@ -235,6 +272,21 @@
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputEncoding = THREE.sRGBEncoding;
+
+    // --- [새 기능] 라벨 렌더러 설정 (추가) ---
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    
+    // 스타일 설정 (캔버스 위에 겹쳐서 표시)
+    labelRenderer.domElement.style.position = 'absolute';
+    labelRenderer.domElement.style.top = '0px';
+    
+    // [중요] 마우스 이벤트가 라벨을 통과해서 캔버스에 닿게 함
+    // (이게 없으면 마우스 휠 줌이나 알람 클릭이 안 될 수 있습니다)
+    labelRenderer.domElement.style.pointerEvents = 'none'; 
+    
+    document.body.appendChild(labelRenderer.domElement);
+    // ----------------------------------------
 
     // --- 7. 3D 모델 불러오기 ---
     let loader = new GLTFLoader();
@@ -829,6 +881,8 @@ for (let i = activeEffects.length - 1; i >= 0; i--) {
       }
 
       renderer.render(scene, camera); // 씬 렌더링
+
+      labelRenderer.render(scene, camera);
     }
     // 애니메이션 루프 1회만 호출
     animate();
@@ -841,6 +895,8 @@ for (let i = activeEffects.length - 1; i >= 0; i--) {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      // [추가] 라벨 렌더러도 크기 업데이트
+      labelRenderer.setSize(window.innerWidth, window.innerHeight);
     });
 
     // 키보드 누름

@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Three.js 입문</title>
+  <title>도우미카</title>
   <style>
     body { margin: 0; }
     canvas { display: block; }
@@ -281,7 +281,7 @@
 
       if (movementQueue.length > 0) {
         // 수동 조작 후 위치 보정을 위해 시작점(현재 방)으로 차를 스냅
-        model_car.position.copy(roomData[currentRoom]);
+        //model_car.position.copy(roomData[currentRoom]);
         currentTarget = movementQueue.shift(); // 첫 번째 경로점 설정
       }
       
@@ -793,20 +793,28 @@ for (let i = activeEffects.length - 1; i >= 0; i--) {
       if (model_car) {
         // A. 자동 이동 모드 (currentTarget이 설정된 경우)
         if (currentTarget) {
-          model_car.position.lerp(currentTarget, 0.05); // 목표로 5%씩 이동
-          model_car.lookAt(currentTarget); // 목표 지점 바라보기
+          model_car.position.lerp(currentTarget, 0.05); 
+          model_car.lookAt(currentTarget); 
 
-          // 목표에 0.01 이내로 근접하면
+          // 목표 도달 시
           if (model_car.position.distanceTo(currentTarget) < 0.01) {
-            model_car.position.copy(currentTarget); // 정확한 위치로 스냅
+            model_car.position.copy(currentTarget); // 위치 스냅
 
             if (movementQueue.length > 0) {
-              currentTarget = movementQueue.shift(); // 다음 경로점 설정
+              currentTarget = movementQueue.shift(); 
             } else {
-              currentTarget = null; // 이동 완료 (수동 모드 전환)
+              // [여기가 이동 완료 시점입니다]
+              currentTarget = null; 
+
+              // ✅ [핵심 수정] 자동 이동이 끝났으면, 수동 목표 지점도 현재 위치로 업데이트!
+              // 이걸 안 하면 차가 다시 옛날 위치로 돌아가 버립니다.
+              if (targetPosition) {
+                  targetPosition.copy(model_car.position);
+                  targetRotation = model_car.rotation.y;
+              }
             }
           }
-        } 
+        }
         // B. 수동 조작 모드 (currentTarget이 null인 경우)
         else if (targetPosition) {
           

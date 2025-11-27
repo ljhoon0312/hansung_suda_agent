@@ -35,14 +35,17 @@ app.post("/command", (req, res) => {
     return res.status(400).json({ ok: false, error: "command is required" });
   }
 
-  console.log("받은 명령:", command);
+  console.log("받은 명령(로봇):", command);
 
-  // 연결된 모든 브라우저로 전파
+  // 연결된 모든 브라우저로 전파 (RC카 제어용)
+  const payload = JSON.stringify({
+    type: "command",
+    command,
+  });
+
   for (const ws of clients) {
-    try {
-      ws.send(JSON.stringify({ type: "command", command }));
-    } catch (e) {
-      console.error("WS 전송 중 에러:", e);
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(payload);
     }
   }
 
@@ -55,11 +58,13 @@ app.post('/suda/llm', (req, res) => {
 
   console.log('받은 명령:', llmText);
 
+  /*
   // WebSocket으로 브라우저(Three.js)에 브로드캐스트
   const payload = JSON.stringify({
     type: 'command',     // ← 이게 꼭 "command" 여야 함
     command: llmText     // ← 여기 들어간 문자열이 parseCommand(message)에 들어감
   });
+  */
 
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {

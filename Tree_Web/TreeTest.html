@@ -647,8 +647,11 @@ function convertKoreanToTime(text) {
   function parseKoreanNumber(str, type) {
     if (!str) return NaN;
 
-    // 단위 제거 (혹시 섞여 있으면)
-    str = str.replace(/오전|오후|아침|저녁|밤|새벽|뒤|후|시|분|시간|일/g, '');
+    // (1) 날짜 단어 먼저 제거
+    str = str.replace(/오늘|내일|모레|글피|어제|그제/g, '');
+
+    // (2) 시간 관련 단위 제거 (⚠ '일'은 제거하지 않는다!)
+    str = str.replace(/오전|오후|아침|저녁|밤|새벽|뒤|후|시|분|시간/g, '');
 
     if (!str) return NaN;
 
@@ -791,6 +794,7 @@ function convertKoreanToTime(text) {
 
   return { hour, minute, isRelative, dayOffset };
 }
+
 
 // --- [수정] 알람 울림 시뮬레이션 ---
     function ringAlarm() {

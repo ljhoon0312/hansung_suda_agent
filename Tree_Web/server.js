@@ -25,30 +25,6 @@ wss.on("connection", (ws) => {
   });
 });
 
-// 안드로이드에서 명령 보내는 엔드포인트
-// body: { "command": "<maum_0>(direction=1)<maum_end>" }
-app.post("/command", (req, res) => {
-  const { command } = req.body;
-
-  if (!command) {
-    console.error("command 필드가 비어 있음");
-    return res.status(400).json({ ok: false, error: "command is required" });
-  }
-
-  console.log("받은 명령:", command);
-
-  // 연결된 모든 브라우저로 전파
-  for (const ws of clients) {
-    try {
-      ws.send(JSON.stringify({ type: "command", command }));
-    } catch (e) {
-      console.error("WS 전송 중 에러:", e);
-    }
-  }
-
-  res.json({ ok: true });
-});
-
 // LLM 결과 받는 핸들러 안에서 (POST /suda/llm)
 app.post('/suda/llm', (req, res) => {
   const llmText = req.body.data;  // 안드에서 보낸 LLM 결과, 예: "<maum_1>(direction=2)"

@@ -66,11 +66,13 @@ class ConversationService(
 // LLM 응답에서 RC카 제어용 명령(<maum_x>(...) 또는 <maum_x>(...)<maum_end>) 추출
     private fun extractRobotCommand(llmResponse: String): String? {
         // 1) 옛날 포맷: <maum_x>(...)<maum_end>
+        /*
         val regexWithEnd = Regex("<maum_\\d+>\\(.*?\\)<maum_end>")
         val matchWithEnd = regexWithEnd.find(llmResponse)
         if (matchWithEnd != null) {
             return matchWithEnd.value
         }
+         */
 
         // 2) 지금처럼 <maum_x>(...) 만 온 경우도 허용
         val regexWithoutEnd = Regex("<maum_\\d+>\\(.*?\\)")
@@ -715,15 +717,76 @@ class ConversationService(
     }
 
     private fun getSimpleTtsText(token: String, parameters: Map<String, String>): String {
-        // 1) 이동/방향 계열: LLM이 <maum_1>(direction=2) 이런 식으로 보낸 경우
-        if (parameters.containsKey("direction")) {
-            val dir = parameters["direction"]
-            return when (dir) {
-                "1" -> "알겠어요, 앞으로 이동할게요."
-                "2" -> "알겠어요, 안방으로 이동할게요."   // 너가 원하는 멘트로 바꿔도 됨
-                "3" -> "알겠어요, 왼쪽으로 이동할게요."
-                "4" -> "알겠어요, 오른쪽으로 이동할게요."
-                else -> "알겠어요, 이동할게요."
+        // =========================
+        // 1) 이동 제어: <maum_0>
+        // =========================
+        if (token == "<maum_0>" && parameters.containsKey("direction")) {
+            return when (parameters["direction"]) {
+                "1" -> "앞으로 갑니다."
+                "2" -> "뒤로 갑니다."
+                "3" -> "왼쪽으로 갑니다."
+                "4" -> "오른쪽으로 갑니다."
+                else -> "이동합니다."
+            }
+        }
+
+        // =========================
+        // 2) 목적지 이동: <maum_1>
+        // =========================
+        if (token == "<maum_1>" && parameters.containsKey("direction")) {
+            return when (parameters["direction"]) {
+                "1" -> "거실로 이동합니다."
+                "2" -> "안방으로 이동합니다."
+                "3" -> "주방으로 이동합니다."
+                else -> "이동합니다."
+            }
+        }
+
+        // =========================
+        // 3) 시간 알림 설정: <maum_2>
+        // =========================
+        if (token == "<maum_2>" && parameters.containsKey("mode")) {
+            val mode = parameters["mode"]
+            return when (mode) {
+                // 모범발화: "알람을 몇시에 설정할까요"
+                "1" -> "알람을 몇 시에 설정할까요?"
+                // 모범발화: "알람을 설정합니다"
+                "2" -> {
+                    val time = parameters["time"]
+                    if (!time.isNullOrBlank()) {
+                        // 필요하면 time 넣어서 말하게
+                        "알람을 ${time}에 설정합니다."
+                    } else {
+                        "알람을 설정합니다."
+                    }
+                }
+                else -> "알람을 설정합니다."
+            }
+        }
+
+        // =========================
+        // 4) 속도 조절: <maum_3>
+        // =========================
+        if (token == "<maum_3>" && parameters.containsKey("mode")) {
+            return when (parameters["mode"]) {
+                // 모범발화: "속도를 올립니다."
+                "1" -> "속도를 올립니다."
+                // 모범발화: "속도를 낮춥니다."
+                "2" -> "속도를 낮춥니다."
+                else -> "속도를 조절합니다."
+            }
+        }
+
+        // =========================
+        // 5) 핸드폰 찾기: <maum_4>
+        // =========================
+        if (token == "<maum_4>" && parameters.containsKey("mode")) {
+            return when (parameters["mode"]) {
+                // 모범발화: "소리로 핸드폰을 찾습니다"
+                "1" -> "소리로 핸드폰을 찾습니다."
+                // 모범발화: "진동으로 핸드폰을 찾습니다"
+                "2" -> "진동으로 핸드폰을 찾습니다."
+                else -> "핸드폰을 찾습니다."
             }
         }
 

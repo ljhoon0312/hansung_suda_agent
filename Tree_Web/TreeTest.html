@@ -512,288 +512,288 @@
       // RC카 기준으로 살짝 위/앞에서 보는 위치 계산
       camTo.copy(model_car.position).add(highlightOffset);
     }
-/**
- * 한국어 시간 표현을 파싱해서 { hour, minute, isRelative, dayOffset }로 변환
- *
- * 지원 예시:
- *  - 절대 시간:
- *    "오전 5시", "오후 세시 이십분", "여덟시", "이십시삼십오분",
- *    "오늘 저녁 여덟시", "내일 새벽 두시 반", "모레 점심"
- *
- *  - 상대 시간:
- *    "1시간 뒤", "두시간 삼십분후", "이십분뒤",
- *    "3일 후 오전 5시", "이틀 뒤 저녁 여섯시",
- *    "하루 뒤 점심"
- */
-function convertKoreanToTime(text) {
-  // 0. 공백 제거
-  text = text.replace(/\s+/g, '');
+    /**
+     * 한국어 시간 표현을 파싱해서 { hour, minute, isRelative, dayOffset }로 변환
+     *
+     * 지원 예시:
+     *  - 절대 시간:
+     *    "오전 5시", "오후 세시 이십분", "여덟시", "이십시삼십오분",
+     *    "오늘 저녁 여덟시", "내일 새벽 두시 반", "모레 점심"
+     *
+     *  - 상대 시간:
+     *    "1시간 뒤", "두시간 삼십분후", "이십분뒤",
+     *    "3일 후 오전 5시", "이틀 뒤 저녁 여섯시",
+     *    "하루 뒤 점심"
+     */
+    function convertKoreanToTime(text) {
+      // 0. 공백 제거
+      text = text.replace(/\s+/g, '');
 
-  let hour = 0;
-  let minute = 0;
-  let isRelative = false; // "뒤", "후" 여부
-  let dayOffset = 0;      // 오늘 기준 날짜 오프셋 (오늘=0, 내일=1, 모레=2, 어제=-1 ...)
+      let hour = 0;
+      let minute = 0;
+      let isRelative = false; // "뒤", "후" 여부
+      let dayOffset = 0;      // 오늘 기준 날짜 오프셋 (오늘=0, 내일=1, 모레=2, 어제=-1 ...)
 
-  // 1. 상대 시간 여부
-  if (text.includes('뒤') || text.includes('후')) {
-    isRelative = true;
-  }
-
-  // 2. 날짜 단어 처리 (오늘/내일/모레/글피/어제/그제)
-  if (text.includes('오늘')) {
-    dayOffset += 0;
-  } else if (text.includes('내일')) {
-    dayOffset += 1;
-  } else if (text.includes('모레')) {
-    dayOffset += 2;
-  } else if (text.includes('글피')) {
-    dayOffset += 3;
-  } else if (text.includes('어제')) {
-    dayOffset -= 1;
-  } else if (text.includes('그제')) {
-    dayOffset -= 2;
-  }
-
-  // 3. 오전/오후/시간대 표현
-  const isPM = /오후|저녁|밤/.test(text);
-  const isAM = /오전|아침|새벽/.test(text);
-
-  const KOREAN_DIGITS = {
-    '공': 0, '영': 0,
-    '일': 1, '이': 2, '삼': 3, '사': 4, '오': 5,
-    '육': 6, '칠': 7, '팔': 8, '구': 9
-  };
-
-  // 시간에서 쓰는 고유어 숫자 (1~12)
-  const NATIVE_HOUR = {
-    '열두': 12,
-    '열한': 11,
-    '열': 10,
-    '아홉': 9,
-    '여덟': 8,
-    '일곱': 7,
-    '여섯': 6,
-    '다섯': 5,
-    '네': 4,
-    '세': 3,
-    '두': 2,
-    '한': 1
-  };
-
-  // 날짜에서 쓰는 고유어 숫자 (하루, 이틀, 사흘...)
-  const NATIVE_DAY = {
-    '하루': 1,
-    '이틀': 2,
-    '사흘': 3,
-    '나흘': 4,
-    '닷새': 5,
-    '엿새': 6,
-    '이레': 7,
-    '여드레': 8,
-    '아흐레': 9,
-    '열흘': 10
-  };
-
-  // 시간대 기본값 (시/분이 전혀 없을 때)
-  const PERIOD_DEFAULT_HOUR = {
-    '새벽': 2,
-    '아침': 8,
-    '오전': 9,
-    '점심': 12,
-    '정오': 12,
-    '저녁': 19,
-    '밤': 21,
-    '오후': 15,
-    '자정': 0
-  };
-
-  // "삼십오" -> 35, "이십" -> 20, "오" -> 5
-  function parseSinoNumber(str) {
-    str = str.trim();
-    if (!str) return NaN;
-
-    const idx = str.indexOf('십');
-    if (idx !== -1) {
-      const left = str.slice(0, idx);      // "삼십오"에서 "삼"
-      const right = str.slice(idx + 1);    // "삼십오"에서 "오"
-      let tens = 1; // "십" 단독이면 10
-
-      if (left.length > 0) {
-        if (left.length !== 1 || !(left in KOREAN_DIGITS)) return NaN;
-        tens = KOREAN_DIGITS[left];
+      // 1. 상대 시간 여부
+      if (text.includes('뒤') || text.includes('후')) {
+        isRelative = true;
       }
 
-      let num = tens * 10;
-
-      if (right.length > 0) {
-        if (right.length !== 1 || !(right in KOREAN_DIGITS)) return NaN;
-        num += KOREAN_DIGITS[right];
+      // 2. 날짜 단어 처리 (오늘/내일/모레/글피/어제/그제)
+      if (text.includes('오늘')) {
+        dayOffset += 0;
+      } else if (text.includes('내일')) {
+        dayOffset += 1;
+      } else if (text.includes('모레')) {
+        dayOffset += 2;
+      } else if (text.includes('글피')) {
+        dayOffset += 3;
+      } else if (text.includes('어제')) {
+        dayOffset -= 1;
+      } else if (text.includes('그제')) {
+        dayOffset -= 2;
       }
-      return num;
-    }
 
-    // 십이 없는 경우: 한 글자 숫자만 허용
-    if (str.length === 1 && str in KOREAN_DIGITS) {
-      return KOREAN_DIGITS[str];
-    }
+      // 3. 오전/오후/시간대 표현
+      const isPM = /오후|저녁|밤/.test(text);
+      const isAM = /오전|아침|새벽/.test(text);
 
-    return NaN;
-  }
+      const KOREAN_DIGITS = {
+        '공': 0, '영': 0,
+        '일': 1, '이': 2, '삼': 3, '사': 4, '오': 5,
+        '육': 6, '칠': 7, '팔': 8, '구': 9
+      };
 
-  /**
-   * 공통 숫자 파서
-   * type: 'hour' | 'minute' | 'day'
-   */
-  function parseKoreanNumber(str, type) {
-    if (!str) return NaN;
+      // 시간에서 쓰는 고유어 숫자 (1~12)
+      const NATIVE_HOUR = {
+        '열두': 12,
+        '열한': 11,
+        '열': 10,
+        '아홉': 9,
+        '여덟': 8,
+        '일곱': 7,
+        '여섯': 6,
+        '다섯': 5,
+        '네': 4,
+        '세': 3,
+        '두': 2,
+        '한': 1
+      };
 
-    // (1) 날짜 단어 먼저 제거
-    str = str.replace(/오늘|내일|모레|글피|어제|그제/g, '');
+      // 날짜에서 쓰는 고유어 숫자 (하루, 이틀, 사흘...)
+      const NATIVE_DAY = {
+        '하루': 1,
+        '이틀': 2,
+        '사흘': 3,
+        '나흘': 4,
+        '닷새': 5,
+        '엿새': 6,
+        '이레': 7,
+        '여드레': 8,
+        '아흐레': 9,
+        '열흘': 10
+      };
 
-    // (2) 시간 관련 단위 제거 (⚠ '일'은 제거하지 않는다!)
-    str = str.replace(/오전|오후|아침|저녁|밤|새벽|뒤|후|시|분|시간/g, '');
+      // 시간대 기본값 (시/분이 전혀 없을 때)
+      const PERIOD_DEFAULT_HOUR = {
+        '새벽': 2,
+        '아침': 8,
+        '오전': 9,
+        '점심': 12,
+        '정오': 12,
+        '저녁': 19,
+        '밤': 21,
+        '오후': 15,
+        '자정': 0
+      };
 
-    if (!str) return NaN;
+      // "삼십오" -> 35, "이십" -> 20, "오" -> 5
+      function parseSinoNumber(str) {
+        str = str.trim();
+        if (!str) return NaN;
 
-    // 1) 아라비아 숫자 우선
-    const numMatch = str.match(/\d+/);
-    if (numMatch) {
-      return parseInt(numMatch[0], 10);
-    }
+        const idx = str.indexOf('십');
+        if (idx !== -1) {
+          const left = str.slice(0, idx);      // "삼십오"에서 "삼"
+          const right = str.slice(idx + 1);    // "삼십오"에서 "오"
+          let tens = 1; // "십" 단독이면 10
 
-    // 2) 고유어 처리
-    if (type === 'hour') {
-      const nativeKeys = Object.keys(NATIVE_HOUR)
-        .sort((a, b) => b.length - a.length);
-      for (const k of nativeKeys) {
-        if (str.startsWith(k)) {
-          return NATIVE_HOUR[k];
+          if (left.length > 0) {
+            if (left.length !== 1 || !(left in KOREAN_DIGITS)) return NaN;
+            tens = KOREAN_DIGITS[left];
+          }
+
+          let num = tens * 10;
+
+          if (right.length > 0) {
+            if (right.length !== 1 || !(right in KOREAN_DIGITS)) return NaN;
+            num += KOREAN_DIGITS[right];
+          }
+          return num;
+        }
+
+        // 십이 없는 경우: 한 글자 숫자만 허용
+        if (str.length === 1 && str in KOREAN_DIGITS) {
+          return KOREAN_DIGITS[str];
+        }
+
+        return NaN;
+      }
+
+      /**
+       * 공통 숫자 파서
+       * type: 'hour' | 'minute' | 'day'
+       */
+      function parseKoreanNumber(str, type) {
+        if (!str) return NaN;
+
+        // (1) 날짜 단어 먼저 제거
+        str = str.replace(/오늘|내일|모레|글피|어제|그제/g, '');
+
+        // (2) 시간 관련 단위 제거 (⚠ '일'은 제거하지 않는다!)
+        str = str.replace(/오전|오후|아침|저녁|밤|새벽|뒤|후|시|분|시간/g, '');
+
+        if (!str) return NaN;
+
+        // 1) 아라비아 숫자 우선
+        const numMatch = str.match(/\d+/);
+        if (numMatch) {
+          return parseInt(numMatch[0], 10);
+        }
+
+        // 2) 고유어 처리
+        if (type === 'hour') {
+          const nativeKeys = Object.keys(NATIVE_HOUR)
+            .sort((a, b) => b.length - a.length);
+          for (const k of nativeKeys) {
+            if (str.startsWith(k)) {
+              return NATIVE_HOUR[k];
+            }
+          }
+        } else if (type === 'day') {
+          const nativeKeys = Object.keys(NATIVE_DAY)
+            .sort((a, b) => b.length - a.length);
+          for (const k of nativeKeys) {
+            if (str.startsWith(k)) {
+              return NATIVE_DAY[k];
+            }
+          }
+        }
+
+        // 3) 한자어(일, 이, 삼, 사…) 처리
+        return parseSinoNumber(str);
+      }
+
+      // ======= 일(day) 기준 상대 표현 처리 =======
+      // 예: "3일후", "삼일뒤", "이틀뒤", "사흘후"
+      // 3.1 N일 뒤/후
+      const dayMatch = text.match(/([0-9가-힣]+)일(뒤|후)/);
+      if (dayMatch) {
+        const dayStr = dayMatch[1];
+        const d = parseKoreanNumber(dayStr, 'day');
+        if (!isNaN(d)) {
+          dayOffset += d;
+          isRelative = true;
         }
       }
-    } else if (type === 'day') {
-      const nativeKeys = Object.keys(NATIVE_DAY)
-        .sort((a, b) => b.length - a.length);
-      for (const k of nativeKeys) {
-        if (str.startsWith(k)) {
-          return NATIVE_DAY[k];
-        }
-      }
-    }
 
-    // 3) 한자어(일, 이, 삼, 사…) 처리
-    return parseSinoNumber(str);
-  }
-
-  // ======= 일(day) 기준 상대 표현 처리 =======
-  // 예: "3일후", "삼일뒤", "이틀뒤", "사흘후"
-  // 3.1 N일 뒤/후
-  const dayMatch = text.match(/([0-9가-힣]+)일(뒤|후)/);
-  if (dayMatch) {
-    const dayStr = dayMatch[1];
-    const d = parseKoreanNumber(dayStr, 'day');
-    if (!isNaN(d)) {
-      dayOffset += d;
-      isRelative = true;
-    }
-  }
-
-  // 3.2 "하루뒤", "이틀후" 같은 표현
-  for (const [key, val] of Object.entries(NATIVE_DAY)) {
-    if (text.includes(key + '뒤') || text.includes(key + '후')) {
-      dayOffset += val;
-      isRelative = true;
-      break;
-    }
-  }
-
-  // ================== 상대 시간(타이머) ==================
-  if (isRelative) {
-    // 시간 단위가 있는지 확인
-    if (text.includes('시간')) {
-      // "한시간반뒤", "두시간삼십분후" 등 처리
-      const hourPart = text.split('시간')[0]; // "한", "두", "1", "세" 등
-      const parsedHour = parseKoreanNumber(hourPart, 'hour');
-      if (!isNaN(parsedHour)) hour = parsedHour;
-
-      const afterHour = text.split('시간')[1];
-
-      // 시간 뒤에 "반" 있으면 +30분
-      if (afterHour.includes('반')) {
-        minute = 30;
-      }
-
-      // "N분" 표시가 있으면 덮어쓰기
-      if (afterHour.includes('분')) {
-        const minPart = afterHour.split('분')[0];
-        const parsedMin = parseKoreanNumber(minPart, 'minute');
-        if (!isNaN(parsedMin)) minute = parsedMin;
-      }
-    } else {
-      // "시간" 없이 "N분뒤", "이십분후" 등
-      if (text.includes('반')) {
-        minute = 30;
-      } else if (text.includes('분')) {
-        const minPart = text.split('분')[0];
-        const parsedMin = parseKoreanNumber(minPart, 'minute');
-        if (!isNaN(parsedMin)) minute = parsedMin;
-      } else {
-        // 단위 없으면 분으로 가정: "10뒤", "이십뒤"
-        const parsedMin = parseKoreanNumber(text, 'minute');
-        if (!isNaN(parsedMin)) minute = parsedMin;
-      }
-    }
-
-  // ================== 절대 시간(시계) ==================
-  } else {
-    if (text.includes('시')) {
-      const hourPart = text.split('시')[0];
-      const parsedHour = parseKoreanNumber(hourPart, 'hour');
-      if (!isNaN(parsedHour)) hour = parsedHour;
-
-      const afterHour = text.split('시')[1];
-
-      if (afterHour.includes('반')) {
-        minute = 30;
-      } else if (afterHour.includes('분')) {
-        const minPart = afterHour.split('분')[0];
-        const parsedMin = parseKoreanNumber(minPart, 'minute');
-        if (!isNaN(parsedMin)) minute = parsedMin;
-      }
-    } else if (text.includes('분') || text.includes('반')) {
-      // "10분", "이십분", "반"만 있는 경우 (시 = 0시)
-      if (text.includes('반')) {
-        minute = 30;
-      } else {
-        const minPart = text.split('분')[0];
-        const parsedMin = parseKoreanNumber(minPart, 'minute');
-        if (!isNaN(parsedMin)) minute = parsedMin;
-      }
-    } else {
-      // 그냥 "5", "열두", "여덟" 등만 나온 경우: 시로 가정
-      const parsedHour = parseKoreanNumber(text, 'hour');
-      if (!isNaN(parsedHour)) hour = parsedHour;
-    }
-
-    // 오전/오후 보정
-    if (isPM && hour < 12 && hour > 0) {
-      hour += 12;          // 오후 3시 -> 15시
-    } else if (isAM && hour === 12) {
-      hour = 0;            // 오전 12시 -> 0시
-    }
-
-    // 시/분이 전혀 없고, 시간대 단어만 있는 경우 기본값 사용
-    if (hour === 0 && minute === 0) {
-      for (const [key, val] of Object.entries(PERIOD_DEFAULT_HOUR)) {
-        if (text.includes(key)) {
-          hour = val;
+      // 3.2 "하루뒤", "이틀후" 같은 표현
+      for (const [key, val] of Object.entries(NATIVE_DAY)) {
+        if (text.includes(key + '뒤') || text.includes(key + '후')) {
+          dayOffset += val;
+          isRelative = true;
           break;
         }
       }
-    }
-  }
 
-  return { hour, minute, isRelative, dayOffset };
-}
+      // ================== 상대 시간(타이머) ==================
+      if (isRelative) {
+        // 시간 단위가 있는지 확인
+        if (text.includes('시간')) {
+          // "한시간반뒤", "두시간삼십분후" 등 처리
+          const hourPart = text.split('시간')[0]; // "한", "두", "1", "세" 등
+          const parsedHour = parseKoreanNumber(hourPart, 'hour');
+          if (!isNaN(parsedHour)) hour = parsedHour;
+
+          const afterHour = text.split('시간')[1];
+
+          // 시간 뒤에 "반" 있으면 +30분
+          if (afterHour.includes('반')) {
+            minute = 30;
+          }
+
+          // "N분" 표시가 있으면 덮어쓰기
+          if (afterHour.includes('분')) {
+            const minPart = afterHour.split('분')[0];
+            const parsedMin = parseKoreanNumber(minPart, 'minute');
+            if (!isNaN(parsedMin)) minute = parsedMin;
+          }
+        } else {
+          // "시간" 없이 "N분뒤", "이십분후" 등
+          if (text.includes('반')) {
+            minute = 30;
+          } else if (text.includes('분')) {
+            const minPart = text.split('분')[0];
+            const parsedMin = parseKoreanNumber(minPart, 'minute');
+            if (!isNaN(parsedMin)) minute = parsedMin;
+          } else {
+            // 단위 없으면 분으로 가정: "10뒤", "이십뒤"
+            const parsedMin = parseKoreanNumber(text, 'minute');
+            if (!isNaN(parsedMin)) minute = parsedMin;
+          }
+        }
+
+      // ================== 절대 시간(시계) ==================
+      } else {
+        if (text.includes('시')) {
+          const hourPart = text.split('시')[0];
+          const parsedHour = parseKoreanNumber(hourPart, 'hour');
+          if (!isNaN(parsedHour)) hour = parsedHour;
+
+          const afterHour = text.split('시')[1];
+
+          if (afterHour.includes('반')) {
+            minute = 30;
+          } else if (afterHour.includes('분')) {
+            const minPart = afterHour.split('분')[0];
+            const parsedMin = parseKoreanNumber(minPart, 'minute');
+            if (!isNaN(parsedMin)) minute = parsedMin;
+          }
+        } else if (text.includes('분') || text.includes('반')) {
+          // "10분", "이십분", "반"만 있는 경우 (시 = 0시)
+          if (text.includes('반')) {
+            minute = 30;
+          } else {
+            const minPart = text.split('분')[0];
+            const parsedMin = parseKoreanNumber(minPart, 'minute');
+            if (!isNaN(parsedMin)) minute = parsedMin;
+          }
+        } else {
+          // 그냥 "5", "열두", "여덟" 등만 나온 경우: 시로 가정
+          const parsedHour = parseKoreanNumber(text, 'hour');
+          if (!isNaN(parsedHour)) hour = parsedHour;
+        }
+
+        // 오전/오후 보정
+        if (isPM && hour < 12 && hour > 0) {
+          hour += 12;          // 오후 3시 -> 15시
+        } else if (isAM && hour === 12) {
+          hour = 0;            // 오전 12시 -> 0시
+        }
+
+        // 시/분이 전혀 없고, 시간대 단어만 있는 경우 기본값 사용
+        if (hour === 0 && minute === 0) {
+          for (const [key, val] of Object.entries(PERIOD_DEFAULT_HOUR)) {
+            if (text.includes(key)) {
+              hour = val;
+              break;
+            }
+          }
+        }
+      }
+
+      return { hour, minute, isRelative, dayOffset };
+    }
 
 
 // --- [수정] 알람 울림 시뮬레이션 ---
